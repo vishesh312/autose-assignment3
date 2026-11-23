@@ -174,6 +174,14 @@ The defences against bad input and runaway runs are:
 - **Human commits are protected.** Before the branch is reset on a re-trigger, the orchestrator (in the build/rework job, not the gate) checks for commits on `autose/issue-<N>` that the bot did not author. If there are any, it stops with a message instead of force-pushing over a person's work.
 - **Failure reporting.** Every stop writes `## Stop reason` into the artifact of the stage that failed, updates the status comment, and applies a label.
 
+- **No token next to agent-influenced code (added after code review, ADR-005 revision note).**
+  - build/rework are prepare (token) → agent (no token, S1–S4 offline) → publish (token).
+  - Every agent runs with `--restricted --strict-mcp-config`.
+  - Orchestrator git runs with hooks and fsmonitor disabled.
+  - Check subprocesses get a scrubbed environment.
+  - A final path gate (`git diff --name-only --no-renames <base> HEAD` ⊆ allowlist) runs before every push.
+  - Invalid reviews are posted under an "INVALID REVIEW (not an approval)" header.
+
 ### 10.1 Operational details (added after the ADR review)
 - The workflow-level `permissions: {}` grants nothing, and every job declares the permissions it needs.
 - Git push credentials are configured only in the release step, after all agents in that job have finished.
@@ -185,7 +193,7 @@ The defences against bad input and runaway runs are:
 
 ## 11. Concurrency (ADR-010)
 
-Only real trigger events (the `autose` label, or a comment starting with `/autose`) are grouped on the issue number. Every other event is grouped on `github.run_id` and exits in the gate, so an unrelated comment cannot cancel a queued run (ADR-010). Real triggers use the workflow-level `concurrency: autose-${{ github.event.issue.number }}` and `cancel-in-progress: false`. A second trigger for the same issue therefore queues behind the first. Different issues run in parallel on separate branches, so they cannot conflict until a human merges. Downstream jobs also carry a job-level group keyed on the **canonical** issue number that the gate resolves, so a `/autose` comment on the PR and a label on the issue still serialise.
+Only real trigger events (the `autose` label, or a comment starting with `/autose`) are grouped on the issue number. Every other event is grouped on `github.run_id` and exits in the gate, so an unrelated comment cannot cancel a queued run (ADR-010). Real triggers use the workflow-level `concurrency: autose-${{ github.event.issue.number }}` and `cancel-in-progress: false`. A second trigger for the same issue therefore queues behind the first. Different issues run in parallel on separate branches, so they cannot conflict until a human merges. Job-level groups were dropped (ADR-010 revision note), because shared groups can cancel another run's pending rounds. Overlaps between runs that started from the PR and from the issue are made safe by the stale-SHA discard and by pushing with lease.
 
 ## 12. Experiments (planned)
 
