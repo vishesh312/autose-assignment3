@@ -30,7 +30,7 @@ flowchart TB
       gate["Gate (no LLM)<br/>collaborator permission check,<br/>reject bots and fork PRs,<br/>resolve canonical issue N"]
     end
     subgraph JB["build job S1-S5 | contents:write, pull-requests:write, issues:write"]
-      orch["autose orchestrator (no LLM)<br/>state machine + checks<br/>ledger.jsonl, state.json, renders test_report.md<br/>Release S5 by template, 8 USD run cap"]
+      orch["autose orchestrator (no LLM)<br/>state machine + checks<br/>ledger.jsonl, state.json, renders test_report.md<br/>Release S5 by template, 10 USD run cap"]
     end
     subgraph ROUND["autose-round.yml, rounds 1..3, if: previous verdict"]
       direction LR
@@ -149,9 +149,9 @@ Key properties the diagram shows:
 |---|---|---|---|
 | Maintainer | Triggers a run (label `autose`, `/autose`, `/autose review`); makes the final merge/close decision | write/maintain/admin on the fork | GitHub UI |
 | GitHub issue / PR / labels / comments | Trigger events; untrusted input; human-visible state | — | Actions runner (events) |
-| Actions runner (`autose.yml`, `autose-round.yml`) | Runs the fixed job DAG gate, build, round 1..3, finalize; `concurrency: autose-<N>`, `cancel-in-progress: false` | timeouts: build 60 min, review 30 min, CI 15 min | All jobs |
+| Actions runner (`autose.yml`, `autose-round.yml`) | Runs the fixed job DAG gate, build, round 1..3, finalize; `concurrency: autose-<N>`, `cancel-in-progress: false` | timeouts: build 60 min, review 45 min, CI 15 min | All jobs |
 | gate job | Authorises the sender (collaborators API, not only `author_association`), ignores bots, rejects comments on PRs from forks, resolves the canonical issue number, creates the status comment | `issues: write`, `pull-requests: read`, `contents: read` | `gh` -> GitHub REST |
-| build job: `autose` orchestrator | Deterministic state machine for S1-S5; runs every check; writes `ledger.jsonl` and `state.json`; renders `test_report.md` from pytest results, `test_map.json` and fails-on-base results; enforces the $8 run cap; performs S5 Release from templates; uploads workflow artifacts | `contents: write`, `pull-requests: write`, `issues: write` | `claude` CLI (subprocess), `gh`/`git`, workflow artifacts |
+| build job: `autose` orchestrator | Deterministic state machine for S1-S5; runs every check; writes `ledger.jsonl` and `state.json`; renders `test_report.md` from pytest results, `test_map.json` and fails-on-base results; enforces the $10 run cap (with one Reviewer cap reserved before any rework); performs S5 Release from templates; uploads workflow artifacts | `contents: write`, `pull-requests: write`, `issues: write` | `claude` CLI (subprocess), `gh`/`git`, workflow artifacts |
 | rework job (rounds 2-3) | Same orchestrator, re-entering at the stage the reviewer routed to and running on to S5 | `contents: write`, `pull-requests: write`, `issues: write` | `claude` CLI, `gh`/`git`, workflow artifacts (download) |
 | ci job | Reusable CI on the head SHA (because pushes made with `GITHUB_TOKEN` do not trigger workflows); posts a commit status | `contents: read`, `statuses: write` | `gh` -> commit status; branch checkout |
 | review job | Prepare step (with token) writes issue text, trusted comments and `git diff` to files; agent step (no token) runs the Reviewer on the PR head checkout; uploads `review.json` as `autose-issue<N>-review-r<k>` | `contents: read`, `issues: read`, `pull-requests: read`; no token in the agent step's env; downloads only the previous round's review artifact | prepare: `gh` -> GitHub REST; agent: `claude` CLI -> Anthropic API |
@@ -189,7 +189,7 @@ flowchart TD
   S5["S5 Release<br/>deterministic: push, PR, trace"]
   CI["CI job<br/>reusable workflow"]
   S6["S6 Review<br/>Reviewer, separate job"]
-  ROUTE{"send_backs &lt; 2?"}
+  ROUTE{"send_backs &lt; 2 and<br/>rework + 1 review<br/>fits run cap?"}
 
   NI(["STOP: needs-info<br/>questions posted,<br/>label autose:needs-info"])
   FAIL(["STOP: failed<br/>Stop reason in artifact,<br/>label autose:failed"])
@@ -224,13 +224,14 @@ flowchart TD
 
   S6 -->|invalid review:<br/>re-ask once| S6
   S6 -->|approve| HUMAN
-  S6 -->|changes_requested,<br/>or invalid twice| ROUTE
+  S6 -->|changes_requested<br/>with blocking findings| ROUTE
+  S6 -->|invalid twice:<br/>no category to route| HUMAN
   ROUTE -->|yes, approach: new design,<br/>Tester regenerates tests,<br/>design revisit not used| S2
   ROUTE -->|yes, code: tests kept,<br/>suite + fails-on-base re-run| S3
   ROUTE -->|yes, tests: Tester<br/>revises its file| S4
   ROUTE -->|no: final review posted| HUMAN
 
-  BUDGET["Any stage: 8 USD run cap<br/>or job timeout reached"] -.-> FAIL
+  BUDGET["Any stage: 10 USD run cap<br/>or job timeout reached"] -.-> FAIL
 
   classDef stop fill:#fff0f0,stroke:#c00
   classDef human fill:#eaffea,stroke:#2e7d32
@@ -242,4 +243,4 @@ flowchart TD
   class S5,CI,ESC,ROUTE,BUDGET det
 ```
 
-Every edge follows the routing table in DESIGN.md section 2.1 ("every failed check has exactly one route"). Caps: 2 spec attempts, 2 design attempts, 3 Developer attempts and 2 Tester attempts per design, 1 in-build design revisit, 2 review send-backs, $8 per run, 20 min per agent call. A new design (from the revisit or from an `approach` send-back) resets the Developer and Tester counters; an `approach` send-back does not use the in-build design revisit. "No progress" means the same diff hash **or** the same failing test set as the previous attempt, and is treated as if the Developer attempts were exhausted.
+Every edge follows the routing table in DESIGN.md section 2.1 ("every failed check has exactly one route"). Caps: 2 spec attempts, 2 design attempts, 3 Developer attempts and 2 Tester attempts per design, 1 in-build design revisit, 2 review send-backs, $10 per run, 20 min per agent call. Only `blocking` findings route; an invalid review (still invalid after one re-ask) has no category and ends the run `awaiting-human`. A new design (from the revisit or from an `approach` send-back) resets the Developer and Tester counters; an `approach` send-back does not use the in-build design revisit. "No progress" means the same diff hash **or** the same failing test set as the previous attempt, and is treated as if the Developer attempts were exhausted.

@@ -9,7 +9,7 @@ flowchart TD
   S5["S5 Release<br/>deterministic: push, PR, trace"]
   CI["CI job<br/>reusable workflow"]
   S6["S6 Review<br/>Reviewer, separate job"]
-  ROUTE{"send_backs &lt; 2?"}
+  ROUTE{"send_backs &lt; 2 and<br/>rework + 1 review<br/>fits run cap?"}
 
   NI(["STOP: needs-info<br/>questions posted,<br/>label autose:needs-info"])
   FAIL(["STOP: failed<br/>Stop reason in artifact,<br/>label autose:failed"])
@@ -44,13 +44,14 @@ flowchart TD
 
   S6 -->|invalid review:<br/>re-ask once| S6
   S6 -->|approve| HUMAN
-  S6 -->|changes_requested,<br/>or invalid twice| ROUTE
+  S6 -->|changes_requested<br/>with blocking findings| ROUTE
+  S6 -->|invalid twice:<br/>no category to route| HUMAN
   ROUTE -->|yes, approach: new design,<br/>Tester regenerates tests,<br/>design revisit not used| S2
   ROUTE -->|yes, code: tests kept,<br/>suite + fails-on-base re-run| S3
   ROUTE -->|yes, tests: Tester<br/>revises its file| S4
   ROUTE -->|no: final review posted| HUMAN
 
-  BUDGET["Any stage: 8 USD run cap<br/>or job timeout reached"] -.-> FAIL
+  BUDGET["Any stage: 10 USD run cap<br/>or job timeout reached"] -.-> FAIL
 
   classDef stop fill:#fff0f0,stroke:#c00
   classDef human fill:#eaffea,stroke:#2e7d32

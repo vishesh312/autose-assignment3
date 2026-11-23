@@ -23,7 +23,7 @@ flowchart TB
       gate["Gate (no LLM)<br/>collaborator permission check,<br/>reject bots and fork PRs,<br/>resolve canonical issue N"]
     end
     subgraph JB["build job S1-S5 | contents:write, pull-requests:write, issues:write"]
-      orch["autose orchestrator (no LLM)<br/>state machine + checks<br/>ledger.jsonl, state.json, renders test_report.md<br/>Release S5 by template, 8 USD run cap"]
+      orch["autose orchestrator (no LLM)<br/>state machine + checks<br/>ledger.jsonl, state.json, renders test_report.md<br/>Release S5 by template, 10 USD run cap"]
     end
     subgraph ROUND["autose-round.yml, rounds 1..3, if: previous verdict"]
       direction LR

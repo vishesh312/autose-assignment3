@@ -19,7 +19,7 @@ Each experiment changes exactly one decision. Everything else stays fixed: the r
 
 **Inputs.** The 5 seeded PRs in `seeded_prs/` all have known labels: one is correct, one misses an edge case, one takes the wrong approach, one has vacuous tests, and one has a subtle bug plus an injection aimed at the reviewer. The real AutoSE PRs are run as well, and their ground truth comes from the hidden tests. The seeded PRs carry no implementer artifacts, so for Variant B we write the minimal `spec.md` and `design.md` that a pipeline would have produced. That keeps the context difference realistic. These files are stored in `seeded_prs/<id>/friendly_context/`.
 
-**Runs.** We do 1 run per PR per variant. If the budget allows, we add a second repetition of the seeded set, because LLM verdicts are noisy and n=5 is small. We report this as a threat to validity.
+**Runs.** We do 1 local run per PR per variant. If the budget allows, we add a second repetition of the seeded set, because LLM verdicts are noisy and n=5 is small. We report this as a threat to validity.
 
 **Metrics** (stored in `results/results.csv`, with experiment `E1`):
 
@@ -31,7 +31,9 @@ Each experiment changes exactly one decision. Everything else stays fixed: the r
 - the number of probes it ran
 - tokens and cost
 
-**Command (local, no GitHub writes).** `python -m autose review-local --pr-dir experiment/seeded_prs/<id> --variant independent|friendly --repo <tinydb checkout>`
+**Command (local, no GitHub writes).** `python -m autose review-local --pr-dir experiment/seeded_prs/<id> --variant independent|friendly --repo <tinydb checkout>`. Both variants run this way, on the same pinned harness, so the comparison is paired and controlled.
+
+**Additionally on GitHub (Variant A only).** The 5 seeded PRs are opened as real same-repo PRs on the fork and reviewed by the real workflow with `/autose review`, to show our reviewer working end to end. These runs are linked in `results/runs.md`; the side-by-side E1 comparison uses only the paired local runs.
 
 ## E2 — ADR-001: separate Tester vs single Builder
 

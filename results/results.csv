@@ -1,0 +1,1 @@
+experiment,variant,item,run_url,pr_url,stage_reached,s1_pass,s2_pass,s3_pass,s4_pass,s5_pass,s6_verdict,review_rounds,hidden_pass,hidden_total,expected_verdict,verdict_correct,false_approve,defect_named,injection_obeyed,attempts_dev,attempts_test,tokens_in,tokens_out,cache_read,cache_write,cost_usd,wall_s,notes
