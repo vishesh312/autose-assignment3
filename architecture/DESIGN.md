@@ -80,9 +80,9 @@ Every agent runs as `claude -p --bare --no-session-persistence --model <m> --too
 |---|---|---|---|
 | Analyst | Read, Grep, Glob | — | none (the orchestrator writes the artifacts from the structured output) |
 | Architect | Read, Grep, Glob | — | none |
-| Developer | Read, Grep, Glob, Edit, Write, Bash | `python -m pytest*`, `python -m mypy*`, `python -m compileall*`, `git diff*`, `git status*` | in the working tree; enforced afterwards by the path allowlist |
-| Tester | Read, Grep, Glob, Edit, Write, Bash | `python -m pytest*` | in the working tree; enforced afterwards (one test file only) |
-| Reviewer | Read, Grep, Glob, Write, Bash | `python -m pytest*`, `python*` (scratch probes), `git diff*`, `git log*`, `git show*` | `$RUNNER_TEMP/review-probes/` only (via `--add-dir`); any change to the working tree is discarded and does not matter, because the job cannot push |
+| Developer | Read, Grep, Glob, Edit, Write, Bash | `Bash(python -m pytest *)`, `Bash(python -m mypy *)`, `Bash(python -m compileall *)`, `Bash(git diff *)`, `Bash(git status *)` | in the working tree; enforced afterwards by the path allowlist |
+| Tester | Read, Grep, Glob, Edit, Write, Bash | `Bash(python -m pytest *)` | in the working tree; enforced afterwards (one test file only) |
+| Reviewer | Read, Grep, Glob, Write, Bash | `Bash(python -m pytest *)`, `Bash(python <probe-dir>/*)` (scratch probes only), `Bash(git diff *)`, `Bash(git log *)`, `Bash(git show *)` | `$RUNNER_TEMP/review-probes/` only (via `--add-dir`); any change to the working tree is discarded and does not matter, because the job cannot push |
 
 Only deterministic code ever uses GitHub, through the `gh` CLI with the job's `GITHUB_TOKEN`. `actions/checkout` runs with `persist-credentials: false`. Agent steps never receive `GH_TOKEN`/`GITHUB_TOKEN` in their environment.
 
@@ -93,7 +93,7 @@ Job permissions:
 | gate | `issues: write`, `pull-requests: read`, `contents: read` |
 | build / rework | `contents: write`, `pull-requests: write`, `issues: write` |
 | ci | `contents: read`, `statuses: write` |
-| review (agent) | `contents: read` |
+| review (agent) | `contents: read`, `issues: read`, `pull-requests: read`. A *prepare* step uses the token to write the issue text, the trusted comments and `git diff` to files. The *agent* step then runs with no token in its environment and reads only those files. The only artifact it downloads is the **previous round's** `review.json`, fetched by its exact name `autose-issue<N>-review-r<k>`. |
 | post-review | `pull-requests: write`, `issues: write` |
 | finalize | `issues: write`, `pull-requests: write` |
 
@@ -141,7 +141,19 @@ The defences against bad input and runaway runs are:
 - **Timeouts.** Each agent subprocess has a 20 min timeout. The build job has `timeout-minutes` 60, and the review and CI jobs 30 and 15.
 - **Stuck detection.** If an attempt produces the same diff hash or the same failing test set as the previous one, the run escalates.
 - **Actions limits.** PRs and pushes made with `GITHUB_TOKEN` do not trigger other workflows, so CI is called as a reusable workflow and its result is posted as a commit status. Job time is limited. The concurrency queue holds only one pending run.
+- **The model key can still leak (residual risk).** "No network tools" does **not** mean "no network". The Developer, Tester and Reviewer run `pytest` and `python` on code that came, indirectly, from the issue. That code runs with `ANTHROPIC_API_KEY` in its environment, and hosted runners have outbound network access. We reduce the risk in four ways: (a) the key is a dedicated, spend-capped key that is easy to revoke; (b) runners are ephemeral; (c) `AUTOSE_SANDBOX=1` turns on Claude Code's bash sandbox (bubblewrap) with `sandbox.network.allowedDomains=[]` and `credentials.envVars` deny for `ANTHROPIC_API_KEY`, so sandboxed commands neither see the key nor reach the network; (d) a human reads the issue before triggering. Whether (c) works on `ubuntu-latest` must be checked by a canary run before we rely on it, and the result goes into ADR-009.
+- **Budget interplay.** The worst case under the attempt caps alone is about 3 Developer attempts × 2 designs × $1.50, plus 2 rework rounds, which is more than $8. The $8 run cap therefore binds first. This is intended: attempt caps limit *loops*, and the run cap limits *money*.
+- **Human commits are protected.** Before the branch is reset on a re-trigger, the orchestrator checks for commits on `autose/issue-<N>` that the bot did not author. If there are any, it stops with a message instead of force-pushing over a person's work.
 - **Failure reporting.** Every stop writes `## Stop reason` into the artifact of the stage that failed, updates the status comment, and applies a label.
+
+### 10.1 Operational details (added after the ADR review)
+- The workflow-level `permissions: {}` grants nothing, and every job declares the permissions it needs.
+- Git push credentials are configured only in the release step, after all agents in that job have finished.
+- `upload-artifact` uses `overwrite: true`, so that re-running a job replaces its own artifact.
+- `gh` calls always pass `--repo vishesh312/tinydb`. In a fork, `gh pr create` would otherwise default to the upstream repo, which the rules forbid.
+- In the fork, Issues and Actions are turned on (both are off by default for forks), and "Allow GitHub Actions to create pull requests" is enabled.
+- The Claude CLI is pinned to `@anthropic-ai/claude-code@2.1.331`, with `DISABLE_UPDATES=1`.
+- **Canaries** run before the first real run and are cheap, using Haiku with `--max-turns 2`. They check that `--bare` ignores a planted `CLAUDE.md`, that a denied tool really is denied, and that `structured_output` comes back in the shape we parse.
 
 ## 11. Concurrency (ADR-010)
 
