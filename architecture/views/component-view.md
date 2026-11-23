@@ -1,6 +1,6 @@
 # Component view
 
-Source of truth: [`../DESIGN.md`](../DESIGN.md) (sections 2, 3, 5, 6, 7, 10). Rendered copies for the report: `component-view.svg` / `.png`, `state-machine.svg` / `.png` (sources: `*.mmd` in this folder, rendered with `@mermaid-js/mermaid-cli@11.4.2`).
+Source of truth: [`../DESIGN.md`](../DESIGN.md) (sections 2, 2.1, 3, 5, 6, 7, 10) and the ADRs in [`../decisions/`](../decisions/). Rendered copies for the report: `component-view.svg` / `.png`, `state-machine.svg` / `.png` (sources: `*.mmd` in this folder, rendered with `@mermaid-js/mermaid-cli@11.4.2`).
 
 ## 1. Components, tools and who calls whom
 
@@ -30,7 +30,7 @@ flowchart TB
       gate["Gate (no LLM)<br/>collaborator permission check,<br/>reject bots and fork PRs,<br/>resolve canonical issue N"]
     end
     subgraph JB["build job S1-S5 | contents:write, pull-requests:write, issues:write"]
-      orch["autose orchestrator (no LLM)<br/>state machine + checks<br/>ledger.jsonl, state.json<br/>Release S5 by template, $8 run cap"]
+      orch["autose orchestrator (no LLM)<br/>state machine + checks<br/>ledger.jsonl, state.json, renders test_report.md<br/>Release S5 by template, 8 USD run cap"]
     end
     subgraph ROUND["autose-round.yml, rounds 1..3, if: previous verdict"]
       direction LR
@@ -40,9 +40,13 @@ flowchart TB
       subgraph JC["ci job | contents:read, statuses:write"]
         ci["Reusable CI on head SHA<br/>pytest, mypy, commit status"]
       end
-      subgraph JV["review job: NO-TOKEN BOUNDARY | contents:read, persist-credentials:false"]
-        rcli["claude -p --bare"]
-        reviewer["Reviewer | Opus 5.5 | 2 USD<br/>Read, Grep, Glob, Write to probes dir<br/>Bash: pytest, python, git diff/log/show"]
+      subgraph JV["review job | contents:read, issues:read, pull-requests:read"]
+        direction TB
+        prep["prepare step (token)<br/>writes issue text, trusted comments,<br/>git diff base...head to files"]
+        subgraph JVA["agent step: NO-TOKEN BOUNDARY, persist-credentials:false"]
+          rcli["claude -p --bare"]
+          reviewer["Reviewer | Opus 5.5 | 2 USD<br/>Read, Grep, Glob, Write to probes dir<br/>Bash: pytest, python probe-dir/*, git diff/log/show"]
+        end
       end
       subgraph JP["post-review job | pull-requests:write, issues:write"]
         post["Validate review.json, route,<br/>count send-backs, post COMMENT review"]
@@ -66,6 +70,7 @@ flowchart TB
   ghcli["gh CLI + git<br/>deterministic steps only<br/>GITHUB_TOKEN"]
   anth(["Anthropic API"])
   art[("Workflow artifacts<br/>autose-issueN-rR<br/>spec, design, diff, test_report, ledger")]
+  revart[("Review artifact<br/>autose-issueN-review-rK<br/>review.json")]
 
   maint -->|adds label / comments| events
   events -->|triggers| runner
@@ -88,7 +93,9 @@ flowchart TB
   rest --> branch & status & prdoc & prreview
 
   issue -.->|fetched by gh, fenced as data| orch
-  issue -.->|raw issue, fenced, compare only| rcli
+  prep --> ghcli
+  issue -.->|issue text + trusted comments| prep
+  prep -.->|files only, fenced| rcli
   orch -->|upload| art
   art -->|download| orchR
   art -.-x|NOT downloaded| rcli
@@ -96,7 +103,9 @@ flowchart TB
   branch -.->|checkout PR head| rcli
   orch -->|needs: PR open| ci
   ci -->|needs: success| rcli
-  rcli -->|review.json artifact| post
+  rcli -->|upload review.json| revart
+  revart --> post
+  revart -.->|previous round only, by exact name| rcli
   post -->|verdict output| orchR
   post --> fin
 
@@ -105,10 +114,10 @@ flowchart TB
   classDef det fill:#f3f3f3,stroke:#555
   classDef store fill:#fffbe6,stroke:#b8860b
   classDef ext fill:#eaffea,stroke:#2e7d32
-  class UNTRUSTED,JV trust
+  class UNTRUSTED,JVA trust
   class analyst,judge,architect,dev,tester,reviewer agent
-  class gate,orch,orchR,ci,post,fin,ghcli,cli,rcli det
-  class branch,status,prdoc,prreview,art store
+  class gate,orch,orchR,ci,post,fin,ghcli,cli,rcli,prep det
+  class branch,status,prdoc,prreview,art,revart store
   class anth,rest ext
 ```
 
@@ -122,17 +131,17 @@ flowchart TB
 | Grey rectangles | Deterministic code (no LLM): gate, orchestrator, CI, post-review, finalize, `gh`/`git`, the `claude` CLI process. |
 | Cylinders | Data stores (workflow artifacts, branch, status comment, PR body/trace comment, PR review). |
 | Green | External services (Anthropic API, GitHub REST API / git remote). |
-| Red dashed box | Trust boundary: (a) untrusted issue text, (b) the review job, which has no token in the agent environment, no write permission and no build artifacts. |
+| Red dashed box | Trust boundary: (a) untrusted issue text, (b) the review job's agent step, which has no token in its environment, no write permission and no build artifacts (only files written by the prepare step and its own previous `review.json`). |
 | Solid arrow | Call / control (subprocess, HTTP, `needs:`). |
 | Dotted arrow | Data flow only (text that is read, a checkout). |
-| Dotted arrow ending in `x` | Deliberately absent flow (the review job never downloads the build artifacts). |
+| Dotted arrow ending in `x` | Deliberately absent flow (the review job never downloads the build artifacts `autose-issueN-rR`). |
 
 Key properties the diagram shows:
 
 - **Only deterministic code talks to GitHub.** Every GitHub call goes `job step -> gh CLI / git (GITHUB_TOKEN) -> GitHub REST / remote`. No agent has an edge to GitHub; agent processes do not get `GH_TOKEN`/`GITHUB_TOKEN`, `actions/checkout` uses `persist-credentials: false`, and no agent has MCP, WebFetch or WebSearch.
 - **Only the `claude` CLI talks to the model provider.** The path is `orchestrator -> claude CLI (subprocess) -> Anthropic API`. The Judge also goes through this path, as a single call with no tools.
-- **Untrusted text** (issue title, body, comments) enters in two places only, both read-only and fenced as data: the Analyst (through the orchestrator) and the Reviewer (for comparison only). Write-capable agents (Developer, Tester) see only derived artifacts.
-- **The review job is isolated.** It runs on a fresh runner with `contents: read` only, gets the PR head checkout, the raw issue and its own earlier findings, and never downloads `autose-issueN-rR`.
+- **Untrusted text** (issue title, body, comments) enters in two places only, both read-only and fenced as data: the Analyst (through the orchestrator) and the Reviewer (through files written by the review job's prepare step, for comparison only). Write-capable agents (Developer, Tester) see only derived artifacts.
+- **The review job is isolated.** It runs on a fresh runner with read-only permissions (`contents`, `issues`, `pull-requests`). A *prepare* step uses the token to write the issue text, trusted comments and `git diff base...head` to files; the *agent* step then runs with no token in its environment and reads only those files plus the PR head checkout. The only artifact it downloads is its own previous round's `review.json` (`autose-issueN-review-rK`, fetched by exact name); it never downloads `autose-issueN-rR`.
 
 ### Component table
 
@@ -142,10 +151,10 @@ Key properties the diagram shows:
 | GitHub issue / PR / labels / comments | Trigger events; untrusted input; human-visible state | — | Actions runner (events) |
 | Actions runner (`autose.yml`, `autose-round.yml`) | Runs the fixed job DAG gate, build, round 1..3, finalize; `concurrency: autose-<N>`, `cancel-in-progress: false` | timeouts: build 60 min, review 30 min, CI 15 min | All jobs |
 | gate job | Authorises the sender (collaborators API, not only `author_association`), ignores bots, rejects comments on PRs from forks, resolves the canonical issue number, creates the status comment | `issues: write`, `pull-requests: read`, `contents: read` | `gh` -> GitHub REST |
-| build job: `autose` orchestrator | Deterministic state machine for S1-S5; runs every check; writes `ledger.jsonl` and `state.json`; enforces the $8 run cap; performs S5 Release from templates; uploads workflow artifacts | `contents: write`, `pull-requests: write`, `issues: write` | `claude` CLI (subprocess), `gh`/`git`, workflow artifacts |
+| build job: `autose` orchestrator | Deterministic state machine for S1-S5; runs every check; writes `ledger.jsonl` and `state.json`; renders `test_report.md` from pytest results, `test_map.json` and fails-on-base results; enforces the $8 run cap; performs S5 Release from templates; uploads workflow artifacts | `contents: write`, `pull-requests: write`, `issues: write` | `claude` CLI (subprocess), `gh`/`git`, workflow artifacts |
 | rework job (rounds 2-3) | Same orchestrator, re-entering at the stage the reviewer routed to and running on to S5 | `contents: write`, `pull-requests: write`, `issues: write` | `claude` CLI, `gh`/`git`, workflow artifacts (download) |
 | ci job | Reusable CI on the head SHA (because pushes made with `GITHUB_TOKEN` do not trigger workflows); posts a commit status | `contents: read`, `statuses: write` | `gh` -> commit status; branch checkout |
-| review job | Runs the Reviewer on a fresh runner; uploads `review.json` | `contents: read` (checkout only); no token in agent env; no artifacts downloaded | `claude` CLI -> Anthropic API |
+| review job | Prepare step (with token) writes issue text, trusted comments and `git diff` to files; agent step (no token) runs the Reviewer on the PR head checkout; uploads `review.json` as `autose-issue<N>-review-r<k>` | `contents: read`, `issues: read`, `pull-requests: read`; no token in the agent step's env; downloads only the previous round's review artifact | prepare: `gh` -> GitHub REST; agent: `claude` CLI -> Anthropic API |
 | post-review job | Validates `review.json` (re-asks once if invalid), computes the route, counts send-backs, posts a `COMMENT` review with the verdict in the header, applies the verdict label, outputs `verdict` | `pull-requests: write`, `issues: write` | `gh` -> GitHub REST |
 | finalize job | Applies the final label (`autose:awaiting-human` / `autose:failed`) and writes the final status comment | `issues: write`, `pull-requests: write` | `gh` -> GitHub REST |
 | `claude` CLI | Headless harness: `claude -p --bare --no-session-persistence --model <m> --tools ... --allowedTools ... --max-budget-usd <cap> --output-format json --json-schema <schema>`; 20 min subprocess timeout | `ANTHROPIC_API_KEY` only | Anthropic API |
@@ -154,10 +163,11 @@ Key properties the diagram shows:
 | Architect | S2: `spec.md` + `ARCHITECTURE.md` -> `design.json` | Sonnet 5.5, medium effort, $0.75; Read, Grep, Glob | orchestrator |
 | Developer | S3: edits `tinydb/**` following the design; writes `dev_notes.json` | Sonnet 5.5, high effort, $1.50; Read, Grep, Glob, Edit, Write, Bash(`python -m pytest*`, `python -m mypy*`, `python -m compileall*`, `git diff*`, `git status*`) | orchestrator (working tree) |
 | Tester | S4: writes `tests/test_autose_issue_<N>.py` and `test_map.json` from the ACs and the public API section | Sonnet 5.5, medium effort, $1.00; Read, Grep, Glob, Edit, Write, Bash(`python -m pytest*`) | orchestrator (working tree) |
-| Reviewer | S6: adversarial review from the issue + diff + repo at the PR head -> `review.json` | Opus 5.5, high effort, $2.00; Read, Grep, Glob, Write (only `$RUNNER_TEMP/review-probes/`), Bash(`python -m pytest*`, `python*`, `git diff*`, `git log*`, `git show*`) | review job (structured output) |
+| Reviewer | S6: adversarial review from the issue + diff + repo at the PR head -> `review.json` | Opus 5.5, high effort, $2.00; Read, Grep, Glob, Write (only `$RUNNER_TEMP/review-probes/`), Bash(`python -m pytest *`, `python <probe-dir>/*`, `git diff *`, `git log *`, `git show *`) | review job (structured output) |
 | `gh` CLI + `git` | The only GitHub client; used by deterministic steps only | job's `GITHUB_TOKEN` | GitHub REST API, git remote |
 | Anthropic API | Model inference | provider-side hard spend limit | — |
 | Workflow artifacts `autose-issue<N>-r<round>` | State between jobs in one run (spec, design, diff, test report, ledger, state) | upload/download-artifact | build/rework (up), rework (down); review job: not downloaded |
+| Review artifact `autose-issue<N>-review-r<k>` | `review.json` of round k | upload/download-artifact | review job (up; next round's review job down, by exact name), post-review (down) |
 | Branch `autose/issue-<N>` | The code under review; force-pushed with lease | — | ci, review (checkout) |
 | Issue status comment (`<!-- autose:status -->`) | Sticky, edited-in-place stage table with links | — | humans |
 | PR body (`pr.md`) + trace comment | PR description from template; spec/design/test report in collapsed sections | — | humans (not the Reviewer) |
@@ -175,7 +185,7 @@ flowchart TD
   S2["S2 Design<br/>Architect"]
   S3["S3 Implementation<br/>Developer"]
   S4["S4 Testing<br/>Tester + full suite"]
-  ESC{"design revisit<br/>still available?<br/>(max 1)"}
+  ESC{"design revisit<br/>unused?<br/>(max 1)"}
   S5["S5 Release<br/>deterministic: push, PR, trace"]
   CI["CI job<br/>reusable workflow"]
   S6["S6 Review<br/>Reviewer, separate job"]
@@ -187,35 +197,40 @@ flowchart TD
 
   S1 -->|check pass| S2
   S1 -->|blocking open question| NI
-  S1 -->|check fail, 1st attempt:<br/>retry with judge reasons| S1
-  S1 -->|check fail after retry| FAIL
+  S1 -->|check fail, spec attempts &lt; 2:<br/>retry with reasons| S1
+  S1 -->|check fail, 2 attempts used| FAIL
 
   S2 -->|check pass| S3
-  S2 -->|check fail, 1st attempt:<br/>retry with checker message| S2
-  S2 -->|check fail after retry| FAIL
+  S2 -->|check fail, design attempts &lt; 2:<br/>retry with checker output| S2
+  S2 -->|check fail, 2 attempts used| FAIL
 
   S3 -->|builds| S4
-  S3 -.->|build fail, attempts below 3 *| S3
+  S3 -->|check fail, Developer attempts &lt; 3:<br/>retry with check output| S3
+  S3 -->|3 Developer attempts used,<br/>or no progress| ESC
 
-  S4 -->|full suite pass, every AC covered,<br/>at least 1 new test fails on base| S5
-  S4 -->|tests fail and Developer attempts &lt; 3:<br/>failing ids + 4 KB output| S3
-  S4 -->|contested test:<br/>Tester re-checks once| S4
-  S4 -->|3 attempts used, or<br/>no-progress detected| ESC
-  ESC -->|yes: failure_summary.md| S2
+  S4 -->|suite pass, every AC covered,<br/>at least 1 new test fails on base| S5
+  S4 -->|Tester check fail, Tester attempts &lt; 2:<br/>retry with checker output| S4
+  S4 -->|Tester check fail, 2 attempts used| FAIL
+  S4 -->|suite fails, Developer attempts &lt; 3:<br/>failing ids + output| S3
+  S4 -->|suite fails, 3 Developer attempts used,<br/>or no progress| ESC
+  ESC -->|yes: failure_summary.md,<br/>new design resets Dev/Tester counters| S2
   ESC -->|no| FAIL
 
+  S5 -->|push / PR fails:<br/>retry once after 10 s| S5
+  S5 -->|fails again| FAIL
   S5 -->|PR OPEN| CI
   CI -->|success| S6
-  CI -.->|failure: route not<br/>specified in DESIGN.md *| FAIL
+  CI -->|failure: stop,<br/>CI log link in pr.md| FAIL
 
+  S6 -->|invalid review:<br/>re-ask once| S6
   S6 -->|approve| HUMAN
-  S6 -->|changes_requested<br/>or invalid twice| ROUTE
-  ROUTE -->|yes, approach finding| S2
-  ROUTE -->|yes, code finding| S3
-  ROUTE -->|yes, tests finding| S4
+  S6 -->|changes_requested,<br/>or invalid twice| ROUTE
+  ROUTE -->|yes, approach: new design,<br/>Tester regenerates tests,<br/>design revisit not used| S2
+  ROUTE -->|yes, code: tests kept,<br/>suite + fails-on-base re-run| S3
+  ROUTE -->|yes, tests: Tester<br/>revises its file| S4
   ROUTE -->|no: final review posted| HUMAN
 
-  BUDGET["Any stage: next call would exceed 8 USD run cap,<br/>or 20 min agent timeout"] -.-> FAIL
+  BUDGET["Any stage: 8 USD run cap<br/>or job timeout reached"] -.-> FAIL
 
   classDef stop fill:#fff0f0,stroke:#c00
   classDef human fill:#eaffea,stroke:#2e7d32
@@ -227,10 +242,4 @@ flowchart TD
   class S5,CI,ESC,ROUTE,BUDGET det
 ```
 
-Caps used (DESIGN.md section 10): spec retry 1 (2 attempts), design retry 1 (2 attempts), 3 Developer attempts per design, 1 design revisit, 2 review send-backs, $8 per run, 20 min per agent call.
-
-Edges marked `*` are not stated explicitly in DESIGN.md and are drawn as the most literal reading:
-
-- S3 build failure: DESIGN.md gives the S3 check but no explicit route; drawn as consuming a Developer attempt.
-- CI failure: DESIGN.md defines "CI concludes success" as the S5 check but gives no route for a CI failure; drawn as a stop.
-- No-progress detection "escalates straight away"; drawn as jumping to the same escalation point as "3 attempts used".
+Every edge follows the routing table in DESIGN.md section 2.1 ("every failed check has exactly one route"). Caps: 2 spec attempts, 2 design attempts, 3 Developer attempts and 2 Tester attempts per design, 1 in-build design revisit, 2 review send-backs, $8 per run, 20 min per agent call. A new design (from the revisit or from an `approach` send-back) resets the Developer and Tester counters; an `approach` send-back does not use the in-build design revisit. "No progress" means the same diff hash **or** the same failing test set as the previous attempt, and is treated as if the Developer attempts were exhausted.

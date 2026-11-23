@@ -2,7 +2,7 @@
 
 > **PLANNED sequence (pre-implementation). Will be replaced by the sequence of a real run with run/PR links once runs exist.**
 
-Source of truth: [`../DESIGN.md`](../DESIGN.md) (sections 2, 3, 4, 5). Rendered copies: `sequence-view.svg` / `.png` (source `sequence-view.mmd`).
+Source of truth: [`../DESIGN.md`](../DESIGN.md) (sections 2, 2.1, 3, 4, 5, 6). Rendered copies: `sequence-view.svg` / `.png` (source `sequence-view.mmd`).
 
 This shows one full-pipeline run triggered by the label `autose`, including one test-failure retry inside S3/S4 and one review send-back (a `code` finding, routed to S3), so that both loop levels are visible: the in-job loop run by the orchestrator, and the cross-job loop run through the `autose-round.yml` rounds. The `build job (orchestrator)` lifeline also stands for the round-2 `rework` job, which runs the same orchestrator code.
 
@@ -60,6 +60,7 @@ sequenceDiagram
     Note over B: S3 check PASS, no-progress check (diff hash, failing set) OK
     Note over B: full suite PASS, AC coverage OK, new tests fail on base: S4 PASS
   end
+  B->>B: render test_report.md from pytest results, test_map.json, fails-on-base
 
   Note over B: S5 Release (deterministic)
   B->>GH: push autose/issue-N (force-with-lease), open PR, trace comment
@@ -68,24 +69,26 @@ sequenceDiagram
   C->>GH: commit status success
   C->>R: needs: ci success
 
-  Note over R: round 1, fresh runner, no artifacts, no token
-  R->>R: checkout PR head, git diff base...head, run probes
-  R->>P: review.json artifact
+  Note over R: round 1, fresh runner, no build artifacts
+  R->>GH: prepare step (token): issue text, trusted comments, git diff to files
+  Note over R: agent step, no token in env
+  R->>R: Reviewer reads files + PR head checkout, runs probes
+  R->>P: upload autose-issueN-review-r1 (review.json)
   P->>GH: COMMENT review header REQUEST_CHANGES, label review-changes-requested
 
   alt changes requested and send_backs below 2 (here: code finding, send-back 1)
     P->>B: verdict output, route = S3 (rework job, round 2)
     B->>D: fresh context, code findings
     D-->>B: revised diff
-    B->>T: re-run S4 from spec
-    T-->>B: tests + test_map.json
-    Note over B: S3 and S4 checks PASS
+    Note over B: S4 for a code finding: Tester not called, existing tests kept
+    Note over B: suite + fails-on-base re-run PASS, test_report.md re-rendered
     B->>GH: force-push, update PR body and trace comment
     B->>C: head SHA
     C->>GH: commit status success
     C->>R: needs: ci success
-    R->>R: review again with own round-1 findings
-    R->>P: review.json (approve, checks_performed not empty)
+    R->>GH: prepare step: issue, comments, new diff to files, download autose-issueN-review-r1
+    R->>R: agent step (no token) reviews again with own round-1 findings
+    R->>P: upload autose-issueN-review-r2 (approve, checks_performed not empty)
     P->>GH: COMMENT review header APPROVE, label review-approved
   else send_backs already 2
     Note over P: review is final, no further routing
@@ -97,14 +100,15 @@ sequenceDiagram
   Note over M: human decides merge or close (bot never merges)
 ```
 
-Notes on the planned run:
+Notes on the planned run (routes follow DESIGN.md section 2.1):
 
 - Steps 3-5: the gate checks the sender through the collaborators API and creates the sticky status comment. Later steps edit it in place.
 - Steps 8-11: the Analyst sees the fenced issue; the Judge sees only the AC list. The orchestrator, not an agent, decides the S1 check.
-- Developer retry loop: every attempt starts from a fresh context and receives only the failing test ids plus assertion output truncated to 4 KB. The no-progress detector compares the diff hash and failing test set with the previous attempt.
-- S5 Release is deterministic: no agent pushes or opens the PR.
-- Review job: fresh runner, `contents: read`, no token in the agent environment, no build artifacts. It sees the raw issue, `git diff base...head`, the PR head checkout and (in round 2) its own round-1 findings.
-- Send-back: post-review emits `verdict` and the route; the round-2 `rework` job re-enters at S3 and re-runs every later stage up to S5, then CI and review run again. After 2 send-backs the next review is final.
+- Developer retry loop: a suite failure goes back to S3 and uses one of the 3 Developer attempts for this design. Every attempt starts from a fresh context and receives only the failing test ids plus assertion output truncated to 4 KB. If the diff hash or the failing test set repeats, the orchestrator treats the attempts as exhausted and goes to the design revisit (if unused) or stops.
+- `test_report.md` is rendered by the orchestrator, not written by the Tester.
+- S5 Release is deterministic: no agent pushes or opens the PR. A failing push/PR call is retried once after 10 s; a CI failure stops the run with the CI log linked in `pr.md`.
+- Review job: fresh runner with read-only permissions. A prepare step (with the token) writes the issue text, trusted comments and `git diff base...head` to files; the agent step has no token and reads only those files, the PR head checkout and, from round 2, its own previous `review.json` (`autose-issueN-review-r1`). It never downloads the build artifacts.
+- Send-back: post-review emits `verdict` and the route. For a `code` finding the round-2 `rework` job re-enters at S3; S4 keeps the existing tests and only re-runs the suite and the fails-on-base check (an `approach` finding would instead go to S2 and the Tester would regenerate its tests; a `tests` finding would go to S4). Then S5, CI and review run again. After 2 send-backs the next review is final.
 - The verdict is posted as a `COMMENT` review (a `GITHUB_TOKEN`-opened PR cannot be approved by the same identity) with the verdict in its header and a verdict label. The bot never merges.
 
 ## Real run (to be filled)
@@ -117,10 +121,10 @@ Run: _Actions run link_ · Issue: _link_ · PR: _link_ · Review: _link_
 | 2 | | build | `spec.md`, `spec.json`, `judge.json` | |
 | 3 | | build | `design.md`, `design.json` | |
 | 4 | | build | `diff.patch`, `dev_notes.json` | |
-| 5 | | build | `tests/test_autose_issue_<N>.py`, `test_map.json`, `test_report.md` | |
+| 5 | | build | `tests/test_autose_issue_<N>.py`, `test_map.json`, `test_report.md` (orchestrator-rendered) | |
 | 6 | | build | `pr.md`, PR link, trace comment | |
 | 7 | | ci | commit status | |
-| 8 | | review | `review.json` | |
+| 8 | | review | `review.json` (`autose-issueN-review-r1`) | |
 | 9 | | post-review | `review.md` (PR review) | |
 | ... | | rework / ci / review / post-review | | |
 | n | | finalize | final label + status comment | |

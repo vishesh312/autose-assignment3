@@ -5,7 +5,7 @@ flowchart TD
   S2["S2 Design<br/>Architect"]
   S3["S3 Implementation<br/>Developer"]
   S4["S4 Testing<br/>Tester + full suite"]
-  ESC{"design revisit<br/>still available?<br/>(max 1)"}
+  ESC{"design revisit<br/>unused?<br/>(max 1)"}
   S5["S5 Release<br/>deterministic: push, PR, trace"]
   CI["CI job<br/>reusable workflow"]
   S6["S6 Review<br/>Reviewer, separate job"]
@@ -17,35 +17,40 @@ flowchart TD
 
   S1 -->|check pass| S2
   S1 -->|blocking open question| NI
-  S1 -->|check fail, 1st attempt:<br/>retry with judge reasons| S1
-  S1 -->|check fail after retry| FAIL
+  S1 -->|check fail, spec attempts &lt; 2:<br/>retry with reasons| S1
+  S1 -->|check fail, 2 attempts used| FAIL
 
   S2 -->|check pass| S3
-  S2 -->|check fail, 1st attempt:<br/>retry with checker message| S2
-  S2 -->|check fail after retry| FAIL
+  S2 -->|check fail, design attempts &lt; 2:<br/>retry with checker output| S2
+  S2 -->|check fail, 2 attempts used| FAIL
 
   S3 -->|builds| S4
-  S3 -.->|build fail, attempts below 3 *| S3
+  S3 -->|check fail, Developer attempts &lt; 3:<br/>retry with check output| S3
+  S3 -->|3 Developer attempts used,<br/>or no progress| ESC
 
-  S4 -->|full suite pass, every AC covered,<br/>at least 1 new test fails on base| S5
-  S4 -->|tests fail and Developer attempts &lt; 3:<br/>failing ids + 4 KB output| S3
-  S4 -->|contested test:<br/>Tester re-checks once| S4
-  S4 -->|3 attempts used, or<br/>no-progress detected| ESC
-  ESC -->|yes: failure_summary.md| S2
+  S4 -->|suite pass, every AC covered,<br/>at least 1 new test fails on base| S5
+  S4 -->|Tester check fail, Tester attempts &lt; 2:<br/>retry with checker output| S4
+  S4 -->|Tester check fail, 2 attempts used| FAIL
+  S4 -->|suite fails, Developer attempts &lt; 3:<br/>failing ids + output| S3
+  S4 -->|suite fails, 3 Developer attempts used,<br/>or no progress| ESC
+  ESC -->|yes: failure_summary.md,<br/>new design resets Dev/Tester counters| S2
   ESC -->|no| FAIL
 
+  S5 -->|push / PR fails:<br/>retry once after 10 s| S5
+  S5 -->|fails again| FAIL
   S5 -->|PR OPEN| CI
   CI -->|success| S6
-  CI -.->|failure: route not<br/>specified in DESIGN.md *| FAIL
+  CI -->|failure: stop,<br/>CI log link in pr.md| FAIL
 
+  S6 -->|invalid review:<br/>re-ask once| S6
   S6 -->|approve| HUMAN
-  S6 -->|changes_requested<br/>or invalid twice| ROUTE
-  ROUTE -->|yes, approach finding| S2
-  ROUTE -->|yes, code finding| S3
-  ROUTE -->|yes, tests finding| S4
+  S6 -->|changes_requested,<br/>or invalid twice| ROUTE
+  ROUTE -->|yes, approach: new design,<br/>Tester regenerates tests,<br/>design revisit not used| S2
+  ROUTE -->|yes, code: tests kept,<br/>suite + fails-on-base re-run| S3
+  ROUTE -->|yes, tests: Tester<br/>revises its file| S4
   ROUTE -->|no: final review posted| HUMAN
 
-  BUDGET["Any stage: next call would exceed 8 USD run cap,<br/>or 20 min agent timeout"] -.-> FAIL
+  BUDGET["Any stage: 8 USD run cap<br/>or job timeout reached"] -.-> FAIL
 
   classDef stop fill:#fff0f0,stroke:#c00
   classDef human fill:#eaffea,stroke:#2e7d32

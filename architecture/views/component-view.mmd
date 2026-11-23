@@ -23,7 +23,7 @@ flowchart TB
       gate["Gate (no LLM)<br/>collaborator permission check,<br/>reject bots and fork PRs,<br/>resolve canonical issue N"]
     end
     subgraph JB["build job S1-S5 | contents:write, pull-requests:write, issues:write"]
-      orch["autose orchestrator (no LLM)<br/>state machine + checks<br/>ledger.jsonl, state.json<br/>Release S5 by template, $8 run cap"]
+      orch["autose orchestrator (no LLM)<br/>state machine + checks<br/>ledger.jsonl, state.json, renders test_report.md<br/>Release S5 by template, 8 USD run cap"]
     end
     subgraph ROUND["autose-round.yml, rounds 1..3, if: previous verdict"]
       direction LR
@@ -33,9 +33,13 @@ flowchart TB
       subgraph JC["ci job | contents:read, statuses:write"]
         ci["Reusable CI on head SHA<br/>pytest, mypy, commit status"]
       end
-      subgraph JV["review job: NO-TOKEN BOUNDARY | contents:read, persist-credentials:false"]
-        rcli["claude -p --bare"]
-        reviewer["Reviewer | Opus 5.5 | 2 USD<br/>Read, Grep, Glob, Write to probes dir<br/>Bash: pytest, python, git diff/log/show"]
+      subgraph JV["review job | contents:read, issues:read, pull-requests:read"]
+        direction TB
+        prep["prepare step (token)<br/>writes issue text, trusted comments,<br/>git diff base...head to files"]
+        subgraph JVA["agent step: NO-TOKEN BOUNDARY, persist-credentials:false"]
+          rcli["claude -p --bare"]
+          reviewer["Reviewer | Opus 5.5 | 2 USD<br/>Read, Grep, Glob, Write to probes dir<br/>Bash: pytest, python probe-dir/*, git diff/log/show"]
+        end
       end
       subgraph JP["post-review job | pull-requests:write, issues:write"]
         post["Validate review.json, route,<br/>count send-backs, post COMMENT review"]
@@ -59,6 +63,7 @@ flowchart TB
   ghcli["gh CLI + git<br/>deterministic steps only<br/>GITHUB_TOKEN"]
   anth(["Anthropic API"])
   art[("Workflow artifacts<br/>autose-issueN-rR<br/>spec, design, diff, test_report, ledger")]
+  revart[("Review artifact<br/>autose-issueN-review-rK<br/>review.json")]
 
   maint -->|adds label / comments| events
   events -->|triggers| runner
@@ -81,7 +86,9 @@ flowchart TB
   rest --> branch & status & prdoc & prreview
 
   issue -.->|fetched by gh, fenced as data| orch
-  issue -.->|raw issue, fenced, compare only| rcli
+  prep --> ghcli
+  issue -.->|issue text + trusted comments| prep
+  prep -.->|files only, fenced| rcli
   orch -->|upload| art
   art -->|download| orchR
   art -.-x|NOT downloaded| rcli
@@ -89,7 +96,9 @@ flowchart TB
   branch -.->|checkout PR head| rcli
   orch -->|needs: PR open| ci
   ci -->|needs: success| rcli
-  rcli -->|review.json artifact| post
+  rcli -->|upload review.json| revart
+  revart --> post
+  revart -.->|previous round only, by exact name| rcli
   post -->|verdict output| orchR
   post --> fin
 
@@ -98,8 +107,8 @@ flowchart TB
   classDef det fill:#f3f3f3,stroke:#555
   classDef store fill:#fffbe6,stroke:#b8860b
   classDef ext fill:#eaffea,stroke:#2e7d32
-  class UNTRUSTED,JV trust
+  class UNTRUSTED,JVA trust
   class analyst,judge,architect,dev,tester,reviewer agent
-  class gate,orch,orchR,ci,post,fin,ghcli,cli,rcli det
-  class branch,status,prdoc,prreview,art store
+  class gate,orch,orchR,ci,post,fin,ghcli,cli,rcli,prep det
+  class branch,status,prdoc,prreview,art,revart store
   class anth,rest ext

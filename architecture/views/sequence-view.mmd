@@ -51,6 +51,7 @@ sequenceDiagram
     Note over B: S3 check PASS, no-progress check (diff hash, failing set) OK
     Note over B: full suite PASS, AC coverage OK, new tests fail on base: S4 PASS
   end
+  B->>B: render test_report.md from pytest results, test_map.json, fails-on-base
 
   Note over B: S5 Release (deterministic)
   B->>GH: push autose/issue-N (force-with-lease), open PR, trace comment
@@ -59,24 +60,26 @@ sequenceDiagram
   C->>GH: commit status success
   C->>R: needs: ci success
 
-  Note over R: round 1, fresh runner, no artifacts, no token
-  R->>R: checkout PR head, git diff base...head, run probes
-  R->>P: review.json artifact
+  Note over R: round 1, fresh runner, no build artifacts
+  R->>GH: prepare step (token): issue text, trusted comments, git diff to files
+  Note over R: agent step, no token in env
+  R->>R: Reviewer reads files + PR head checkout, runs probes
+  R->>P: upload autose-issueN-review-r1 (review.json)
   P->>GH: COMMENT review header REQUEST_CHANGES, label review-changes-requested
 
   alt changes requested and send_backs below 2 (here: code finding, send-back 1)
     P->>B: verdict output, route = S3 (rework job, round 2)
     B->>D: fresh context, code findings
     D-->>B: revised diff
-    B->>T: re-run S4 from spec
-    T-->>B: tests + test_map.json
-    Note over B: S3 and S4 checks PASS
+    Note over B: S4 for a code finding: Tester not called, existing tests kept
+    Note over B: suite + fails-on-base re-run PASS, test_report.md re-rendered
     B->>GH: force-push, update PR body and trace comment
     B->>C: head SHA
     C->>GH: commit status success
     C->>R: needs: ci success
-    R->>R: review again with own round-1 findings
-    R->>P: review.json (approve, checks_performed not empty)
+    R->>GH: prepare step: issue, comments, new diff to files, download autose-issueN-review-r1
+    R->>R: agent step (no token) reviews again with own round-1 findings
+    R->>P: upload autose-issueN-review-r2 (approve, checks_performed not empty)
     P->>GH: COMMENT review header APPROVE, label review-approved
   else send_backs already 2
     Note over P: review is final, no further routing
