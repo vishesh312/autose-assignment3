@@ -1,0 +1,105 @@
+flowchart TB
+  maint(["Maintainer<br/>write / maintain / admin"])
+
+  subgraph GH["GitHub: vishesh312/tinydb"]
+    direction LR
+    subgraph UNTRUSTED["TRUST BOUNDARY: untrusted text"]
+      issue["Issue N<br/>title, body, comments"]
+    end
+    events["Label autose / comment /autose<br/>/autose review on PR"]
+    runner["Actions runner<br/>autose.yml + autose-round.yml<br/>concurrency: autose-N"]
+    rest[("GitHub REST API + git remote")]
+    subgraph STORES["GitHub-hosted state (durable)"]
+      branch[("Branch autose/issue-N")]
+      status[("Issue status comment<br/>marker autose:status")]
+      prdoc[("PR: body pr.md<br/>+ trace comment")]
+      prreview[("PR review review.md<br/>+ verdict label")]
+    end
+  end
+
+  subgraph RUN["One Actions run: fixed DAG gate - build - round 1..3 - finalize"]
+    direction LR
+    subgraph JG["gate job | issues:write, pull-requests:read, contents:read"]
+      gate["Gate (no LLM)<br/>collaborator permission check,<br/>reject bots and fork PRs,<br/>resolve canonical issue N"]
+    end
+    subgraph JB["build job S1-S5 | contents:write, pull-requests:write, issues:write"]
+      orch["autose orchestrator (no LLM)<br/>state machine + checks<br/>ledger.jsonl, state.json<br/>Release S5 by template, $8 run cap"]
+    end
+    subgraph ROUND["autose-round.yml, rounds 1..3, if: previous verdict"]
+      direction LR
+      subgraph JR["rework job, rounds 2-3 | contents:write, pull-requests:write, issues:write"]
+        orchR["autose rework<br/>re-enters routed stage, runs on to S5"]
+      end
+      subgraph JC["ci job | contents:read, statuses:write"]
+        ci["Reusable CI on head SHA<br/>pytest, mypy, commit status"]
+      end
+      subgraph JV["review job: NO-TOKEN BOUNDARY | contents:read, persist-credentials:false"]
+        rcli["claude -p --bare"]
+        reviewer["Reviewer | Opus 5.5 | 2 USD<br/>Read, Grep, Glob, Write to probes dir<br/>Bash: pytest, python, git diff/log/show"]
+      end
+      subgraph JP["post-review job | pull-requests:write, issues:write"]
+        post["Validate review.json, route,<br/>count send-backs, post COMMENT review"]
+      end
+    end
+    subgraph JF["finalize job | issues:write, pull-requests:write"]
+      fin["Final labels + status<br/>awaiting-human / failed"]
+    end
+  end
+
+  subgraph AG["Builder agents: claude -p --bare, fresh context per call, no MCP, no Web, no GitHub token"]
+    direction LR
+    cli["claude CLI<br/>--json-schema, --max-budget-usd"]
+    analyst["Analyst | Sonnet 5.5 | 0.75 USD<br/>Read, Grep, Glob"]
+    judge["Judge | Haiku 5.5 | 0.05 USD<br/>no tools, single call"]
+    architect["Architect | Sonnet 5.5 | 0.75 USD<br/>Read, Grep, Glob"]
+    dev["Developer | Sonnet 5.5 | 1.50 USD<br/>Read, Grep, Glob, Edit, Write<br/>Bash: pytest, mypy, compileall, git diff/status"]
+    tester["Tester | Sonnet 5.5 | 1.00 USD<br/>Read, Grep, Glob, Edit, Write<br/>Bash: pytest"]
+  end
+
+  ghcli["gh CLI + git<br/>deterministic steps only<br/>GITHUB_TOKEN"]
+  anth(["Anthropic API"])
+  art[("Workflow artifacts<br/>autose-issueN-rR<br/>spec, design, diff, test_report, ledger")]
+
+  maint -->|adds label / comments| events
+  events -->|triggers| runner
+  runner --> gate
+  gate -->|authorised| orch
+  orch -->|subprocess| cli
+  orchR -->|subprocess| cli
+  cli --> analyst & judge & architect & dev & tester
+  cli -->|HTTPS| anth
+  rcli --> reviewer
+  rcli -->|HTTPS| anth
+
+  gate --> ghcli
+  orch --> ghcli
+  orchR --> ghcli
+  ci --> ghcli
+  post --> ghcli
+  fin --> ghcli
+  ghcli -->|REST / push --force-with-lease| rest
+  rest --> branch & status & prdoc & prreview
+
+  issue -.->|fetched by gh, fenced as data| orch
+  issue -.->|raw issue, fenced, compare only| rcli
+  orch -->|upload| art
+  art -->|download| orchR
+  art -.-x|NOT downloaded| rcli
+  branch -.->|checkout head SHA| ci
+  branch -.->|checkout PR head| rcli
+  orch -->|needs: PR open| ci
+  ci -->|needs: success| rcli
+  rcli -->|review.json artifact| post
+  post -->|verdict output| orchR
+  post --> fin
+
+  classDef trust fill:#fff0f0,stroke:#c00,stroke-width:2px,stroke-dasharray:6 4
+  classDef agent fill:#eef4ff,stroke:#3366cc
+  classDef det fill:#f3f3f3,stroke:#555
+  classDef store fill:#fffbe6,stroke:#b8860b
+  classDef ext fill:#eaffea,stroke:#2e7d32
+  class UNTRUSTED,JV trust
+  class analyst,judge,architect,dev,tester,reviewer agent
+  class gate,orch,orchR,ci,post,fin,ghcli,cli,rcli det
+  class branch,status,prdoc,prreview,art store
+  class anth,rest ext

@@ -32,6 +32,31 @@ This file sets out the whole architecture in one place. The ADRs in `decisions/`
 | 5 | Release | **Deterministic code (no LLM)** | — | `pr.md`, PR link | The branch `autose/issue-<N>` is force-pushed with lease. The PR is opened, or updated if it already exists, with a body built from the artifacts by a template. A trace comment holds `spec.md`/`design.md`/`test_report.md` in collapsed sections. CI runs as a reusable workflow on the head SHA and posts a commit status. The check passes when `gh pr view` returns `OPEN` and the CI job concludes `success`. |
 | 6 | Review | **Reviewer** agent in a **separate job** with read-only permissions and no GitHub token | Opus 5.5 | `review.json` → `review.md`, posted as a PR review (event `COMMENT`, with the verdict in the header) | `review.json` is valid. `approve` must include a non-empty `checks_performed` list with ≥1 command that the reviewer actually ran. Every finding needs evidence (`file:line` + reasoning or command output). An invalid review is re-asked once, and then counts as `changes_requested` with an "invalid review" note. **Routing:** if any finding is `approach`, go to stage 2; else if any is `code`, go to stage 3; else if any is `tests`, go to stage 4. After that the pipeline runs on to stage 5, CI and review again. There can be at most **2 send-backs**. A review after the 2nd send-back is final, and the human decides. |
 
+
+### 2.1 Complete routing table (resolves gaps found while drawing the views)
+
+Every failed check has exactly one route. "Attempt" counters are per design. A new design, whether from a revisit or from an `approach` send-back, resets the Developer and Tester counters.
+
+| Where | Failure | Route | Counter used | When the counter is exhausted |
+|---|---|---|---|---|
+| S1 | schema/structure invalid or judge says untestable | S1 retry with reasons | spec attempts (max 2) | stop (`autose:failed`) |
+| S1 | blocking open question | stop + post questions | — | `autose:needs-info` (not a failure) |
+| S2 | design check fails | S2 retry with checker output | design attempts (max 2) | stop |
+| S3 | path allowlist / compile / import / mypy fails | S3 retry with the check output | Developer attempts (max 3) | design revisit if unused, else stop |
+| S4 | Tester's own check fails (touched a non-test file, an AC without a test, a collection error, **no new test fails on base**) | S4 retry with checker output | Tester attempts (max 2) | stop |
+| S4 | suite fails (new or existing tests) | S3 with the failing ids + output | Developer attempts | design revisit (S2 with `failure_summary.md`) if unused, else stop |
+| S4 | Developer contested a test | Tester re-checks that test against the spec once | contest (max 1 per test) | the test stands |
+| S3/S4 | **no progress** (same diff hash, or same failing test set, as the previous attempt) | treated as if Developer attempts were exhausted | — | design revisit if unused, else stop |
+| S5 | `gh` push or PR create/update fails | retry once after 10 s | — | stop |
+| S5 | CI fails on the PR head | **stop** with the CI log link in `pr.md` | — | CI runs the same commands as the local S4 check, so a CI-only failure means the environment differs (a different Python version or a flaky test). That is a human matter, not something the agent should fix. |
+| S6 | invalid review (schema or evidence rules) | re-ask the reviewer once | — | counts as `changes_requested` with the note "invalid review" |
+| S6 | `approach` finding | S2 → S3 → S4 (the Tester **regenerates** its tests, because the public API may change) → S5 → CI → review | send-backs (max 2); this does **not** use the in-build design revisit | final review only |
+| S6 | `code` finding | S3 → S4 (the existing tests are **kept**; only the suite and fails-on-base are re-run) → S5 → CI → review | send-backs | final review only |
+| S6 | `tests` finding | S4 (the Tester revises its file using the findings) → S5 → CI → review | send-backs | final review only |
+| any | run cost cap ($8) or job timeout reached | stop | — | `autose:failed`, with the reason in the stage artifact |
+
+`test_report.md` is **rendered by the orchestrator** from pytest's JSON/junit results, `test_map.json` and the fails-on-base results. The Tester does not write it, because a report about tests should not come from the agent that wrote them (principle 1).
+
 Roles that are **not** agents are the gate (authorisation), Release, the Judge (one LLM call with no tools and no loop), the status reporter, and the finaliser.
 
 ## 3. Control flow

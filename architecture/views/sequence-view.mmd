@@ -1,0 +1,88 @@
+sequenceDiagram
+  autonumber
+  actor M as Maintainer
+  participant GH as GitHub
+  participant G as gate job
+  participant B as build job (orchestrator)
+  participant AN as Analyst
+  participant J as Judge
+  participant AR as Architect
+  participant D as Developer
+  participant T as Tester
+  participant C as CI job
+  participant R as review job (Reviewer)
+  participant P as post-review
+  participant F as finalize
+
+  M->>GH: add label autose to issue N
+  GH->>G: issues.labeled event
+  G->>GH: gh api collaborators permission of sender
+  GH-->>G: write
+  G->>GH: create status comment (queued)
+  G->>B: needs: gate, canonical issue N
+
+  Note over B: S1 Requirements
+  B->>GH: gh issue view N (title, body, write-access comments)
+  B->>AN: fenced issue text + A1 skill
+  AN-->>B: spec.json
+  B->>J: acceptance criteria only
+  J-->>B: judge.json (all testable)
+  Note over B: schema, AC shape, judge, no blocking question: PASS
+  B->>GH: update status comment
+
+  Note over B: S2 Design
+  B->>AR: spec.md + ARCHITECTURE.md
+  AR-->>B: design.json
+  Note over B: paths exist, AST symbols, AC coverage, allowlist: PASS
+
+  Note over B: S3 Implementation (attempt 1)
+  B->>D: design.md + spec.md
+  D-->>B: working tree edits + dev_notes.json
+  Note over B: allowlist, compileall, import, mypy: PASS
+
+  Note over B: S4 Testing
+  B->>T: ACs + Public API / test hooks section
+  T-->>B: tests/test_autose_issue_N.py + test_map.json
+  Note over B: full suite: 2 new tests FAIL
+
+  loop Developer retry (at most 3 attempts per design)
+    B->>D: fresh context, failing test ids + 4 KB assertion output
+    D-->>B: revised diff + dev_notes.json
+    Note over B: S3 check PASS, no-progress check (diff hash, failing set) OK
+    Note over B: full suite PASS, AC coverage OK, new tests fail on base: S4 PASS
+  end
+
+  Note over B: S5 Release (deterministic)
+  B->>GH: push autose/issue-N (force-with-lease), open PR, trace comment
+  B->>GH: upload artifacts autose-issueN-r1, update status comment
+  B->>C: needs: build (head SHA)
+  C->>GH: commit status success
+  C->>R: needs: ci success
+
+  Note over R: round 1, fresh runner, no artifacts, no token
+  R->>R: checkout PR head, git diff base...head, run probes
+  R->>P: review.json artifact
+  P->>GH: COMMENT review header REQUEST_CHANGES, label review-changes-requested
+
+  alt changes requested and send_backs below 2 (here: code finding, send-back 1)
+    P->>B: verdict output, route = S3 (rework job, round 2)
+    B->>D: fresh context, code findings
+    D-->>B: revised diff
+    B->>T: re-run S4 from spec
+    T-->>B: tests + test_map.json
+    Note over B: S3 and S4 checks PASS
+    B->>GH: force-push, update PR body and trace comment
+    B->>C: head SHA
+    C->>GH: commit status success
+    C->>R: needs: ci success
+    R->>R: review again with own round-1 findings
+    R->>P: review.json (approve, checks_performed not empty)
+    P->>GH: COMMENT review header APPROVE, label review-approved
+  else send_backs already 2
+    Note over P: review is final, no further routing
+  end
+
+  P->>F: verdict
+  F->>GH: label autose:awaiting-human, final status comment
+  GH-->>M: notification: reviewed PR waiting
+  Note over M: human decides merge or close (bot never merges)

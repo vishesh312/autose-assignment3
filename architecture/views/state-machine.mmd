@@ -1,0 +1,57 @@
+flowchart TD
+  start(["Gate passed"]) --> S1
+
+  S1["S1 Requirements<br/>Analyst + Judge"]
+  S2["S2 Design<br/>Architect"]
+  S3["S3 Implementation<br/>Developer"]
+  S4["S4 Testing<br/>Tester + full suite"]
+  ESC{"design revisit<br/>still available?<br/>(max 1)"}
+  S5["S5 Release<br/>deterministic: push, PR, trace"]
+  CI["CI job<br/>reusable workflow"]
+  S6["S6 Review<br/>Reviewer, separate job"]
+  ROUTE{"send_backs &lt; 2?"}
+
+  NI(["STOP: needs-info<br/>questions posted,<br/>label autose:needs-info"])
+  FAIL(["STOP: failed<br/>Stop reason in artifact,<br/>label autose:failed"])
+  HUMAN(["STOP: awaiting-human<br/>human merges or closes"])
+
+  S1 -->|check pass| S2
+  S1 -->|blocking open question| NI
+  S1 -->|check fail, 1st attempt:<br/>retry with judge reasons| S1
+  S1 -->|check fail after retry| FAIL
+
+  S2 -->|check pass| S3
+  S2 -->|check fail, 1st attempt:<br/>retry with checker message| S2
+  S2 -->|check fail after retry| FAIL
+
+  S3 -->|builds| S4
+  S3 -.->|build fail, attempts below 3 *| S3
+
+  S4 -->|full suite pass, every AC covered,<br/>at least 1 new test fails on base| S5
+  S4 -->|tests fail and Developer attempts &lt; 3:<br/>failing ids + 4 KB output| S3
+  S4 -->|contested test:<br/>Tester re-checks once| S4
+  S4 -->|3 attempts used, or<br/>no-progress detected| ESC
+  ESC -->|yes: failure_summary.md| S2
+  ESC -->|no| FAIL
+
+  S5 -->|PR OPEN| CI
+  CI -->|success| S6
+  CI -.->|failure: route not<br/>specified in DESIGN.md *| FAIL
+
+  S6 -->|approve| HUMAN
+  S6 -->|changes_requested<br/>or invalid twice| ROUTE
+  ROUTE -->|yes, approach finding| S2
+  ROUTE -->|yes, code finding| S3
+  ROUTE -->|yes, tests finding| S4
+  ROUTE -->|no: final review posted| HUMAN
+
+  BUDGET["Any stage: next call would exceed 8 USD run cap,<br/>or 20 min agent timeout"] -.-> FAIL
+
+  classDef stop fill:#fff0f0,stroke:#c00
+  classDef human fill:#eaffea,stroke:#2e7d32
+  classDef stage fill:#eef4ff,stroke:#3366cc
+  classDef det fill:#f3f3f3,stroke:#555
+  class NI,FAIL stop
+  class HUMAN human
+  class S1,S2,S3,S4,S6 stage
+  class S5,CI,ESC,ROUTE,BUDGET det
