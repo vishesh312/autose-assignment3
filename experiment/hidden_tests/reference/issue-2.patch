@@ -1,0 +1,13 @@
+diff --git a/tinydb/queries.py b/tinydb/queries.py
+index e106c5d..1eef42e 100644
+--- a/tinydb/queries.py
++++ b/tinydb/queries.py
+@@ -496,7 +496,7 @@ class Query(QueryInstance):
+ 
+         return self._generate_test(
+             lambda value: test(value),
+-            ('fragment', freeze(document)),
++            ('fragment', self._path, freeze(document)),
+             allow_empty_path=True
+         )
+ 

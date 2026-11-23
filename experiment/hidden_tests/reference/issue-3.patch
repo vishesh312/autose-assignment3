@@ -1,0 +1,23 @@
+diff --git a/tinydb/operations.py b/tinydb/operations.py
+index 3f6c6ab..ef03cf9 100644
+--- a/tinydb/operations.py
++++ b/tinydb/operations.py
+@@ -73,3 +73,18 @@ def decrement(field: str) -> Callable[[MutableMapping], None]:
+         doc[field] -= 1
+ 
+     return transform
++
++
++def append(field: str, value: Any) -> Callable[[MutableMapping], None]:
++    """
++    Append ``value`` to the list stored in a given field.
++
++    If the field does not exist yet, it is created as ``[value]``.
++    """
++    def transform(doc: MutableMapping):
++        if field not in doc:
++            doc[field] = [value]
++        else:
++            doc[field].append(value)
++
++    return transform
