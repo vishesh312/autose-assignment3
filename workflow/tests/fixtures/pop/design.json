@@ -1,0 +1,30 @@
+{
+  "approach": "Add a pop method to Table built on get and remove.",
+  "changes": [
+    {
+      "path": "tinydb/table.py",
+      "symbol": "Table",
+      "kind": "modify",
+      "new_file": false,
+      "description": "add Table.pop",
+      "acs": [
+        "AC-1",
+        "AC-2"
+      ]
+    }
+  ],
+  "public_api": [
+    {
+      "signature": "Table.pop(doc_id: int) -> Document",
+      "behaviour": "removes and returns the document; KeyError if missing"
+    }
+  ],
+  "test_hooks": [
+    "use MemoryStorage"
+  ],
+  "risks": [],
+  "architecture_refs": [
+    "ARCHITECTURE.md#table"
+  ],
+  "design_md": "## Approach\nAdd `Table.pop`.\n"
+}

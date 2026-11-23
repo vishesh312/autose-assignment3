@@ -1,0 +1,15 @@
+<issue_number>
+{{ISSUE_NUMBER}}
+</issue_number>
+<test_file>
+{{TEST_FILE}}
+</test_file>
+<acceptance_criteria_md>
+{{ACCEPTANCE_CRITERIA_MD}}
+</acceptance_criteria_md>
+<public_api_md>
+{{PUBLIC_API_MD}}
+</public_api_md>
+<contested_tests>
+{{CONTESTED_TESTS}}
+</contested_tests>

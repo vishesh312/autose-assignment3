@@ -1,0 +1,15 @@
+<issue_number>
+{{ISSUE_NUMBER}}
+</issue_number>
+<issue_title>
+{{ISSUE_TITLE}}
+</issue_title>
+<untrusted_issue>
+{{ISSUE_BODY}}
+</untrusted_issue>
+<maintainer_comments>
+{{MAINTAINER_COMMENTS}}
+</maintainer_comments>
+<previous_feedback>
+{{PREVIOUS_FEEDBACK}}
+</previous_feedback>

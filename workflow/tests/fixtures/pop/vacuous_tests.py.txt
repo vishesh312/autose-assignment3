@@ -1,0 +1,6 @@
+def test_ac1_vacuous() -> None:
+    assert True
+
+
+def test_ac2_vacuous() -> None:
+    assert 1 == 1

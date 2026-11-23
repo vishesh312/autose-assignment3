@@ -1,0 +1,39 @@
+{
+  "analyst": [
+    {
+      "output": "spec.json",
+      "cost_usd": 0.2
+    }
+  ],
+  "judge": [
+    {
+      "output": "judge.json",
+      "cost_usd": 0.01
+    }
+  ],
+  "architect": [
+    {
+      "output": "design.json",
+      "cost_usd": 0.2
+    }
+  ],
+  "developer": [
+    {
+      "output": "dev1.json",
+      "patch": "impl_buggy.patch",
+      "cost_usd": 0.5
+    },
+    {
+      "output": "dev2.json",
+      "patch": "impl_fix.patch",
+      "cost_usd": 0.5
+    }
+  ],
+  "tester": [
+    {
+      "output": "test_map.json",
+      "patch": "tests.patch",
+      "cost_usd": 0.3
+    }
+  ]
+}

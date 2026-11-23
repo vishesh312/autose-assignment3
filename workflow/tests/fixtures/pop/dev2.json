@@ -1,0 +1,9 @@
+{
+  "summary": "DEVNOTE-SECRET raise KeyError",
+  "files_changed": [
+    "tinydb/table.py"
+  ],
+  "deviations_from_design": [],
+  "contested_tests": [],
+  "self_check": "tests pass"
+}

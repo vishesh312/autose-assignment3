@@ -1,0 +1,17 @@
+import pytest
+
+from tinydb import TinyDB
+from tinydb.storages import MemoryStorage
+
+
+def test_ac1_pop_returns_and_removes_document() -> None:
+    db = TinyDB(storage=MemoryStorage)
+    db.insert({'x': 1})
+    assert db.table('_default').pop(1) == {'x': 1}
+    assert len(db) == 0
+
+
+def test_ac2_pop_missing_id_raises_keyerror() -> None:
+    db = TinyDB(storage=MemoryStorage)
+    with pytest.raises(KeyError):
+        db.table('_default').pop(99)

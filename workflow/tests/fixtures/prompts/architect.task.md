@@ -1,0 +1,12 @@
+<issue_number>
+{{ISSUE_NUMBER}}
+</issue_number>
+<spec_md>
+{{SPEC_MD}}
+</spec_md>
+<loopback_context>
+{{LOOPBACK_CONTEXT}}
+</loopback_context>
+<previous_feedback>
+{{PREVIOUS_FEEDBACK}}
+</previous_feedback>

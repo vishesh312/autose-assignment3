@@ -1,0 +1,24 @@
+diff --git a/tinydb/table.py b/tinydb/table.py
+index 1d7bdff..9e72ea9 100644
+--- a/tinydb/table.py
++++ b/tinydb/table.py
+@@ -424,11 +424,15 @@ class Table:
+ 
+         raise RuntimeError('You have to pass either cond or doc_id')
+ 
+-    def pop(self, doc_id: int) -> Optional[Document]:
+-        """Remove the document with ``doc_id`` and return it."""
++    def pop(self, doc_id: int) -> Document:
++        """Remove the document with ``doc_id`` and return it.
++
++        :raises KeyError: if no document has that ID
++        """
+         doc = self.get(doc_id=doc_id)
+-        if doc is not None:
+-            self.remove(doc_ids=[doc_id])
++        if doc is None:
++            raise KeyError(doc_id)
++        self.remove(doc_ids=[doc_id])
+         return doc
+ 
+     def update(

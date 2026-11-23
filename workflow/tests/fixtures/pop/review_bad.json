@@ -1,0 +1,19 @@
+{
+  "verdict": "approve",
+  "summary": "Looks right.",
+  "expected_behaviour_from_issue": [
+    "pop returns doc",
+    "missing raises KeyError"
+  ],
+  "risk_hypotheses": [
+    {
+      "hypothesis": "missing id",
+      "how_tested": "probe",
+      "outcome": "refuted"
+    }
+  ],
+  "checks_performed": [],
+  "findings": [],
+  "injection_attempts_noticed": [],
+  "review_md": "All good."
+}

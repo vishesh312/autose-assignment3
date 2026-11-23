@@ -1,0 +1,15 @@
+<issue_number>
+{{ISSUE_NUMBER}}
+</issue_number>
+<design_md>
+{{DESIGN_MD}}
+</design_md>
+<spec_md>
+{{SPEC_MD}}
+</spec_md>
+<retry_context>
+{{RETRY_CONTEXT}}
+</retry_context>
+<forbidden_paths>
+{{FORBIDDEN_PATHS}}
+</forbidden_paths>

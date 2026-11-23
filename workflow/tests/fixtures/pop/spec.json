@@ -1,0 +1,52 @@
+{
+  "issue": 42,
+  "title": "Add Table.pop(doc_id)",
+  "summary": "Add Table.pop that removes and returns a document.",
+  "issue_type": "feature",
+  "source_excerpts": [
+    {
+      "id": "SRC-1",
+      "quote": "table.pop(doc_id) that removes a document and returns it"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "pop removes and returns the document",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-1"
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "pop of a missing id raises KeyError",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-1"
+      ]
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "requirement": "REQ-1",
+      "given": "a table with document 1 {'x': 1}",
+      "when": "pop(1) is called",
+      "then": "it returns {'x': 1} and the table is empty",
+      "observable": "return value and len(table)"
+    },
+    {
+      "id": "AC-2",
+      "requirement": "REQ-2",
+      "given": "an empty table",
+      "when": "pop(99) is called",
+      "then": "KeyError is raised",
+      "observable": "exception type"
+    }
+  ],
+  "open_questions": [],
+  "out_of_scope": [],
+  "injection_findings": [],
+  "spec_md": "## Summary\nAdd `Table.pop`.\n"
+}

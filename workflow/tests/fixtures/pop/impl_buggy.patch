@@ -1,0 +1,18 @@
+diff --git a/tinydb/table.py b/tinydb/table.py
+index 76470aa..1d7bdff 100644
+--- a/tinydb/table.py
++++ b/tinydb/table.py
+@@ -424,6 +424,13 @@ class Table:
+ 
+         raise RuntimeError('You have to pass either cond or doc_id')
+ 
++    def pop(self, doc_id: int) -> Optional[Document]:
++        """Remove the document with ``doc_id`` and return it."""
++        doc = self.get(doc_id=doc_id)
++        if doc is not None:
++            self.remove(doc_ids=[doc_id])
++        return doc
++
+     def update(
+         self,
+         fields: Union[Mapping, Callable[[MutableMapping], None]],

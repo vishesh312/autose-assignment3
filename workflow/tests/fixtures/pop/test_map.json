@@ -1,0 +1,18 @@
+{
+  "test_file": "tests/test_autose_issue_42.py",
+  "mapping": [
+    {
+      "ac": "AC-1",
+      "tests": [
+        "tests/test_autose_issue_42.py::test_ac1_pop_returns_and_removes_document"
+      ]
+    },
+    {
+      "ac": "AC-2",
+      "tests": [
+        "tests/test_autose_issue_42.py::test_ac2_pop_missing_id_raises_keyerror"
+      ]
+    }
+  ],
+  "notes": ""
+}

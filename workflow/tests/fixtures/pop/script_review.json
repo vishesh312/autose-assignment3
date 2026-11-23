@@ -1,0 +1,15 @@
+{
+  "reviewer": [
+    {
+      "output": "review_bad.json"
+    },
+    {
+      "output": "review_ok.json"
+    }
+  ],
+  "reviewer_friendly": [
+    {
+      "output": "review_ok.json"
+    }
+  ]
+}

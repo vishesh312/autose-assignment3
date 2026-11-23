@@ -1,0 +1,14 @@
+{
+  "verdicts": [
+    {
+      "ac": "AC-1",
+      "testable": true,
+      "reason": "concrete"
+    },
+    {
+      "ac": "AC-2",
+      "testable": true,
+      "reason": "concrete"
+    }
+  ]
+}

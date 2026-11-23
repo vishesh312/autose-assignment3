@@ -1,0 +1,9 @@
+{
+  "summary": "DEVNOTE-SECRET first attempt",
+  "files_changed": [
+    "tinydb/table.py"
+  ],
+  "deviations_from_design": [],
+  "contested_tests": [],
+  "self_check": "compiles"
+}
