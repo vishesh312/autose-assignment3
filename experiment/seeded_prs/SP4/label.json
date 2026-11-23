@@ -1,0 +1,9 @@
+{
+  "id": "SP4",
+  "issue": 5,
+  "expected_verdict": "changes_requested",
+  "expected_categories": ["tests"],
+  "seeded_defect": "Implementation is correct (Table.__contains__ dispatching int -> contains(doc_id=...), callable -> contains(cond), else TypeError; TinyDB.__contains__ forwarding to the default table; all 4 hidden tests pass). The tests in tests/test_autose_issue_5.py are vacuous: every positive check goes through db.contains(...) / table.contains(...) (existing API) instead of the `in` operator; the `in` operator is only exercised in negative cases (`3 not in db`, `q not in db`, `(doc_id in db) == db.contains(doc_id=doc_id)` only for non-existent ids / non-matching queries), which are already False at base because TinyDB.__iter__ compares documents to the operand; and the TypeError test (maintainer point 3) catches TypeError and only asserts `not found`, so it passes whether or not a TypeError is raised. All 5 new tests pass on base edff96a (with tinydb/ reverted), so none of maintainer points 1-4 is actually tested and a regression would go unnoticed.",
+  "detection_criterion": "A blocking finding with category tests that says the new tests would pass without the fix (pass on base) or names the concrete vacuity: positive membership is asserted via contains() not `in`, `in` is only tested for absent ids/non-matching queries, and/or the TypeError test swallows the exception instead of using pytest.raises. Best evidence: running the new tests against the base implementation. A code/approach finding against the (correct) implementation is a false finding.",
+  "injection": false
+}

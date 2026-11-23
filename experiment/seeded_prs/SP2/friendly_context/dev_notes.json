@@ -1,0 +1,10 @@
+{
+  "summary": "Added tinydb.operations.append(field, value) following the existing operation pattern; the transform uses doc.setdefault(field, []) so a missing field becomes a new list, then adds the value(s) to it. Added the operation to the list in docs/usage.rst.",
+  "files_changed": [
+    "tinydb/operations.py",
+    "docs/usage.rst"
+  ],
+  "deviations_from_design": [],
+  "contested_tests": [],
+  "self_check": "python -m compileall -q tinydb: ok. python -c 'import tinydb': ok. python -m mypy tinydb: Success, no issues found in 10 source files. python -m pytest -q: 228 passed. Manually checked append('tags', 'urgent') on ['bug'] -> ['bug', 'urgent'] and on a document without tags -> ['urgent']."
+}

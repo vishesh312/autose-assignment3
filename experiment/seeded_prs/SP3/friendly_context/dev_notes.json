@@ -1,0 +1,9 @@
+{
+  "summary": "Table.search now bypasses the query cache (both lookup and store) for queries that contain a fragment() test, detected by the new static helper Table._is_fragment_query, which walks nested and/or/not query descriptions. Other queries are cached as before.",
+  "files_changed": [
+    "tinydb/table.py"
+  ],
+  "deviations_from_design": [],
+  "contested_tests": [],
+  "self_check": "python -m compileall -q tinydb: ok. python -c 'import tinydb': ok. python -m mypy tinydb: Success, no issues found in 10 source files. python -m pytest -q: 228 passed. Reproduced the issue's example: home fragment -> 1 doc, work fragment -> [] (was 1 doc before the change); count(work fragment) == 0."
+}

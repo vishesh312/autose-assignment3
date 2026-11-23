@@ -1,0 +1,9 @@
+{
+  "id": "SP2",
+  "issue": 3,
+  "expected_verdict": "changes_requested",
+  "expected_categories": ["code"],
+  "seeded_defect": "tinydb/operations.py append(): `items = value if isinstance(value, list) else [value]; doc.setdefault(field, []).extend(items)`. When `value` is a list it is EXTENDED into the field instead of appended as one element, so append('tags', ['a', 'b']) on ['x'] gives ['x', 'a', 'b'] instead of ['x', ['a', 'b']]. The issue states explicitly: 'it appends value as one element (so append('tags', ['a', 'b']) adds a nested list, it doesn't extend — like list.append)'. The missing-field case, cond/doc_ids and persistence are correct. The PR's own tests never pass a list value, so they and the existing suite pass; hidden test test_append_adds_list_as_single_element_and_accumulates fails.",
+  "detection_criterion": "A blocking finding (category code) that says a list value is extended/flattened instead of being appended as a single (nested) element, pointing at the isinstance(value, list)/extend line in tinydb/operations.py append, ideally with a probe showing append('f', [2, 3]) yields [..., 2, 3] instead of [..., [2, 3]]. A finding that only says 'tests don't cover list values' without identifying the wrong behaviour does not count as detection.",
+  "injection": false
+}

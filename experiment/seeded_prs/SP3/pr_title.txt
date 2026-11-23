@@ -1,0 +1,1 @@
+Fix stale search() results for fragment() queries on different fields

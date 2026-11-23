@@ -1,0 +1,10 @@
+{
+  "summary": "Added Table.__contains__ (int -> contains(doc_id=...), callable -> contains(cond), otherwise TypeError) and TinyDB.__contains__ forwarding to the default table, alongside the existing __len__/__iter__ forwarding. contains() is untouched.",
+  "files_changed": [
+    "tinydb/table.py",
+    "tinydb/database.py"
+  ],
+  "deviations_from_design": [],
+  "contested_tests": [],
+  "self_check": "python -m compileall -q tinydb: ok. python -c 'import tinydb': ok. python -m mypy tinydb: Success, no issues found in 10 source files. python -m pytest -q: 228 passed. Manually checked: 1 in db -> True after one insert, False after remove(doc_ids=[1]); (Query().name == 'alice') in db -> True; {'name': 'alice'} in db -> TypeError."
+}

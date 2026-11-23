@@ -1,0 +1,9 @@
+{
+  "summary": "Table.search(cond, limit=None): cached results are returned sliced to limit; on a cache miss the table is scanned in ID order and the scan stops once limit matches are collected. The existing is_cacheable() handling after the scan is unchanged. No change in database.py (search is forwarded by __getattr__).",
+  "files_changed": [
+    "tinydb/table.py"
+  ],
+  "deviations_from_design": [],
+  "contested_tests": [],
+  "self_check": "python -m compileall -q tinydb: ok. python -c 'import tinydb': ok. python -m mypy tinydb: Success, no issues found in 10 source files. python -m pytest -q: 228 passed. Manually checked search(q, limit=3) returns ids [1, 3, 5] and search(q) after a cached full search still returns all matches."
+}

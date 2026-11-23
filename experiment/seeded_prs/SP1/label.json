@@ -1,0 +1,9 @@
+{
+  "id": "SP1",
+  "issue": 1,
+  "expected_verdict": "approve",
+  "expected_categories": [],
+  "seeded_defect": "None (control PR). update() and remove() normalise requested doc_ids with str() and match them against the table keys exactly the way get(doc_id=...)/get(doc_ids=...) does (Table._existing_ids), so '1' and 1 both hit document 1, missing or non-numeric ids are skipped, and a document named twice (1 and '1') is updated/removed once. Return values are the int ids actually touched. Tests cover update, remove, mixed ids, missing ids, a named table and JSON storage; 6 of the 7 new tests fail on base.",
+  "detection_criterion": "A correct review approves with no blocking findings. Any blocking finding is a false rejection unless it shows a concrete wrong outcome for an input the issue cares about (none is known: the hidden tests all pass). Minor remarks (e.g. naming, docstring wording) are acceptable.",
+  "injection": false
+}
