@@ -37,13 +37,14 @@ reasons behind it are in `../architecture/decisions/`.
 
 ## How a build or rework job is split (security)
 
-Each build and rework job runs three steps, so the model key and the GitHub token are never in the same process:
+Each build and rework job runs three steps, so the Codex login and the GitHub token are never in the same process:
 
 1. **prepare** (has `GH_TOKEN`): writes `issue.json` (title, body, comments from write-access users) and
    `branch.json` (the result of the human-commit check) to `$AUTOSE_HOME/issue-<N>/input/`, and adds a "started" line to the status comment.
-2. **agent** (has `ANTHROPIC_API_KEY`, **no** GitHub token; the command refuses to run if one is present): runs S1–S4
+2. **agent** (has the `CODEX_AUTH_JSON` secret, written to `$RUNNER_TEMP/codex-home/auth.json` (mode 600) with `CODEX_HOME`
+   pointing at it and deleted by an `if: always()` step; **no** GitHub token; the command refuses to run if one is present): runs S1–S4
    offline from those files, then commits only `tinydb/**` and the test file (after `git reset`, so anything an agent staged is dropped).
-3. **publish** (has `GH_TOKEN`, no model key): runs a final gate (`git diff --name-only --no-renames base HEAD` must stay
+3. **publish** (has `GH_TOKEN`, no Codex login): runs a final gate (`git diff --name-only --no-renames base HEAD` must stay
    inside the allowlist), sets up push credentials (in this step only), force-pushes with lease, creates or updates the PR,
    and writes the trace comment, labels and status timeline.
 
@@ -108,9 +109,12 @@ All artifacts go under `--home` (default `$AUTOSE_HOME` or `./.autose-home`): `i
 | `AUTOSE_MODEL_<ROLE>`, `AUTOSE_EFFORT_<ROLE>`, `AUTOSE_BUDGET_<ROLE>`, `AUTOSE_MAX_TURNS_<ROLE>`, `AUTOSE_TIMEOUT_<ROLE>` | per-role overrides (`ANALYST`, `JUDGE`, `ARCHITECT`, `DEVELOPER`, `TESTER`, `REVIEWER`, `REVIEWER_FRIENDLY`, `BUILDER`); empty means unset | DESIGN §7 |
 | `AUTOSE_RUN_CAP_USD` | run cost cap; build and rework always leave one Reviewer cap plus one re-ask free | `10` |
 | `AUTOSE_JOB_DEADLINE` | epoch seconds when the job is killed; no agent call starts with less than its timeout + `AUTOSE_DEADLINE_SLACK_MIN` (2) left | unset (no deadline) |
-| `AUTOSE_SANDBOX=1` | pass Claude Code sandbox settings (no network, `ANTHROPIC_API_KEY` denied to commands) | off |
+| `AUTOSE_SANDBOX=1` | ask the backend to sandbox agent commands (no network; the legacy Claude backend also denies its key to commands) | off |
 | `AUTOSE_FAKE` / `--fake DIR` | use `FakeRunner` with `DIR/script.json` | off |
-| `AUTOSE_CLAUDE` | path to the `claude` binary | `claude` |
+| `AUTOSE_BACKEND`, `AUTOSE_BACKEND_<ROLE>` | agent backend, globally or per role; the workflows set `codex` | `codex` |
+| `AUTOSE_CODEX` | path to the `codex` binary | `codex` |
+| `CODEX_HOME` | directory holding Codex's ChatGPT login `auth.json` (in CI: `$RUNNER_TEMP/codex-home`, agent steps only) | `~/.codex` |
+| `AUTOSE_CLAUDE` | path to the `claude` binary (legacy Claude backend) | `claude` |
 | `AUTOSE_PROMPTS_DIR`, `AUTOSE_SKILL_FILE` | prompt locations | next to the package |
 | `AUTOSE_BOT_NAME`, `AUTOSE_BOT_EMAIL` | identity used for commits and the human-commit guard | `github-actions[bot]` |
 | `GITHUB_REPOSITORY` | `owner/repo` passed to every `gh --repo` | `vishesh312/tinydb` |
@@ -123,7 +127,10 @@ git clone git@github.com:vishesh312/tinydb.git ../tinydb-fork
 cd ../tinydb-fork && git diff --stat  # review, then commit and push to main yourself
 ```
 
-Repository settings that the workflows rely on: the secret `ANTHROPIC_API_KEY`; Issues and Actions turned on;
+Repository settings that the workflows rely on: the secret `CODEX_AUTH_JSON` (the contents of your Codex ChatGPT login,
+`gh secret set CODEX_AUTH_JSON --repo vishesh312/tinydb < ~/.codex/auth.json`); Issues and Actions turned on;
 "Allow GitHub Actions to create pull requests" turned on; `main` protected; and optionally the variables
 `AUTOSE_MODEL_*` and `AUTOSE_SANDBOX`. Run the `canary` job (Actions → autose → Run workflow) once
-before the first real trigger.
+before the first real trigger. The workflows install the pinned `@openai/codex@0.172.0`.
+
+> **Credential warning.** `auth.json` holds a *personal ChatGPT subscription* credential (access and refresh tokens), not a spend-capped API key. It is materialised only inside the tokenless agent steps (as `$RUNNER_TEMP/codex-home/auth.json`, mode 600, deleted by an `if: always()` step) and never sits next to `GH_TOKEN`. ChatGPT refresh tokens rotate: if a CI run refreshes the token, the copy on your machine may stop working and you will need to run `codex login` again (and then re-upload the secret). Revoke it by signing out of the session in ChatGPT settings if it may have leaked.

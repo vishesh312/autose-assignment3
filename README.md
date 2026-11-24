@@ -71,7 +71,7 @@ From [DESIGN §7](architecture/DESIGN.md#7-models-adr-006) and [ADR-006](archite
 | Friendly reviewer (E1 variant B only) | — | `claude-sonnet-5-5` | — | — |
 | Builder (E2 variant B only) | — | `claude-sonnet-5-5` | — | — |
 
-Run cap: **$10 per run**. The orchestrator aborts before any call whose cap could exceed it, and it reserves one Reviewer cap before it starts a rework. Harness: Claude Code CLI pinned to `@anthropic-ai/claude-code@2.1.331` ([ADR-011](architecture/decisions/ADR-011.md)).
+Run cap: **$10 per run**. The orchestrator aborts before any call whose cap could exceed it, and it reserves one Reviewer cap before it starts a rework. Harness: OpenAI Codex CLI pinned to `@openai/codex@0.172.0`, authenticated with a ChatGPT subscription (`AUTOSE_BACKEND=codex`; supersedes the Claude Code CLI of [ADR-011](architecture/decisions/ADR-011.md)).
 
 ## How to trigger the workflow
 
@@ -90,9 +90,10 @@ All triggers are on the fork, `vishesh312/tinydb`.
 
 ## Maintainer setup (one-time, on the fork)
 
-1. **Provider spend limit.** Create a dedicated Anthropic API key and set a hard spend limit on it *before* the first run. Record the limit in [`results/tokens.md`](results/tokens.md).
-2. **Secret.** Settings → Secrets and variables → Actions → New repository secret `ANTHROPIC_API_KEY`. No other secret is needed. GitHub access uses the job's `GITHUB_TOKEN`.
-3. **Variables (optional).** `AUTOSE_MODEL_ANALYST`, `AUTOSE_MODEL_JUDGE`, `AUTOSE_MODEL_ARCHITECT`, `AUTOSE_MODEL_DEVELOPER`, `AUTOSE_MODEL_TESTER`, `AUTOSE_MODEL_REVIEWER` override the defaults above. `AUTOSE_SANDBOX=1` turns on Claude Code's bash sandbox (no network, API key hidden from commands) once the canary has shown that it works on `ubuntu-latest`.
+1. **Codex login.** Install `@openai/codex@0.172.0` locally and run `codex login` with the ChatGPT account whose subscription the runs should use. This writes `~/.codex/auth.json`. There is no per-key spend limit: usage counts against the subscription's limits. Record what you used in [`results/tokens.md`](results/tokens.md).
+2. **Secret.** `gh secret set CODEX_AUTH_JSON --repo vishesh312/tinydb < ~/.codex/auth.json`. No other secret is needed. GitHub access uses the job's `GITHUB_TOKEN`.
+   > **Warning.** This is a personal subscription credential (with a refresh token), not a revocable spend-capped API key. The workflows write it to a mode-600 `auth.json` only inside the tokenless agent steps and delete it afterwards; it is never in a step that holds `GH_TOKEN`. ChatGPT refresh tokens rotate, so if a CI run refreshes the token your local login may need `codex login` again (and the secret re-uploading).
+3. **Variables (optional).** `AUTOSE_MODEL_ANALYST`, `AUTOSE_MODEL_JUDGE`, `AUTOSE_MODEL_ARCHITECT`, `AUTOSE_MODEL_DEVELOPER`, `AUTOSE_MODEL_TESTER`, `AUTOSE_MODEL_REVIEWER` override the defaults above. `AUTOSE_SANDBOX=1` turns on the agent sandbox once the canary has shown that it works on `ubuntu-latest`.
 4. **Enable Issues and Actions.** Both are off by default on forks.
 5. **Workflow permissions.** Settings → Actions → General → enable **"Allow GitHub Actions to create and approve pull requests"**.
 6. **Branch protection on `main`.** Require a pull request before merging and block direct pushes, so neither the bot nor a person can push to `main` directly.
@@ -103,7 +104,7 @@ All triggers are on the fork, `vishesh312/tinydb`.
    workflow/sync_to_fork.sh ../tinydb-fork   # copies .autose/ and .github/workflows/, removes upstream CI/publish
    cd ../tinydb-fork && git diff --stat      # review, then commit and push to main through a PR
    ```
-9. **Canary.** Actions → `autose` → Run workflow (`workflow_dispatch`) runs the `canary` job on Haiku. It checks that `--bare` ignores a planted `CLAUDE.md`, that denied tools are denied, that structured output parses, and that the sandbox setting works. Record the result in [`results/runs.md`](results/runs.md).
+9. **Canary.** Actions → `autose` → Run workflow (`workflow_dispatch`) runs the `canary` job. It first makes one trivial `codex exec --ephemeral -s read-only` call with an output schema (proving the login and structured output work), then runs the harness checks (`python -m autose canary`). Record the result in [`results/runs.md`](results/runs.md).
 
 ## Running offline tests and local experiments
 
@@ -160,7 +161,7 @@ What exists and has been checked:
 What has **not** been run yet:
 
 - **No live runs and no model calls.** Neither the workflow on GitHub nor the local E1/E2 experiments have been run, and no canary either. Token and cost totals are therefore zero so far.
-- The `ANTHROPIC_API_KEY` secret is not set yet, so the canary, the pipeline runs and the reviews cannot run.
+- The `CODEX_AUTH_JSON` secret is not set yet, so the canary, the pipeline runs and the reviews cannot run.
 - [`results/`](results/), the report's result sections and the demo video are scaffolding, marked `TBD(run)`. Every number there will come from a real, linked run (see the honesty rule in [`results/runs.md`](results/runs.md)).
 
 ## AI use
