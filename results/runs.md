@@ -35,6 +35,7 @@ In `notes`, record for every run: the submission-repo commit it used (`sub@<sha>
 
 | item | Actions run | PR | review | status | notes |
 |---|---|---|---|---|---|
-| | | | | | |
+| fork setup: `ci.yml` on push to `main` (no LLM) | [45340122654](https://github.com/vishesh312/tinydb/actions/runs/45340122654) | — | — | success | First live run after syncing the workflow into the fork (fork `main` = `edff96a` + `92ea08a` ARCHITECTURE.md + `6a76a2a` AutoSE). Confirms the lean CI (pytest + mypy) works and that upstream's CI and publish workflows are gone. |
+| claude CLI canary (`workflow_dispatch` → `canary`) | | | | not run yet | needs the `ANTHROPIC_API_KEY` secret |
 
 Canaries (DESIGN §10.1, ADR-011): `--bare` ignores a planted `CLAUDE.md` and hook, a denied tool is really denied, `structured_output` comes back in the expected shape, and the bash sandbox setting works on `ubuntu-latest`.
