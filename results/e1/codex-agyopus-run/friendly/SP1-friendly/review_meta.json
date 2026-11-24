@@ -1,0 +1,14 @@
+{
+  "issue": 1,
+  "round": 1,
+  "head_sha": "c6815b5b177e4f77a5714901f14b58165bbf4c08",
+  "base_ref": "edff96aeb2616402e9489d46e90a592c05565621",
+  "variant": "friendly",
+  "model": "gpt-6.1-sol",
+  "valid": true,
+  "problems": [],
+  "cost_usd": 0.204,
+  "reviewer_verdict": "approve",
+  "verification": null,
+  "review_rules": false
+}

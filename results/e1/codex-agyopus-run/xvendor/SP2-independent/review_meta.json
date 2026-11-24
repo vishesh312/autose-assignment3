@@ -1,0 +1,23 @@
+{
+  "issue": 3,
+  "round": 1,
+  "head_sha": "05073522bf82fbbad3cc49da15b34b08c6859f49",
+  "base_ref": "edff96aeb2616402e9489d46e90a592c05565621",
+  "variant": "independent",
+  "model": "claude-opus-4-6-thinking",
+  "valid": true,
+  "problems": [],
+  "cost_usd": 0.4487,
+  "reviewer_verdict": "changes_requested",
+  "verification": {
+    "original_verdict": "changes_requested",
+    "counts": {
+      "confirmed": 0,
+      "plausible": 0,
+      "rejected": 0,
+      "unverified": 2
+    },
+    "cost_usd": 0.0
+  },
+  "review_rules": false
+}

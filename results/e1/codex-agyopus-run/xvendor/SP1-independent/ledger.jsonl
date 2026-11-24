@@ -1,0 +1,1 @@
+{"ts": "2026-11-24T13:44:40Z", "run_id": "local-20261124T191206", "issue": 1, "round": 1, "stage": "S6", "attempt": 1, "actor": "reviewer", "model": "claude-opus-4-6-thinking", "event": "check", "passed": true, "reason": "approve", "tokens_in": 49474, "tokens_out": 7500, "cache_read": 191722, "cache_write": 0, "cost_usd": 0.5307, "seconds": 146.3011}

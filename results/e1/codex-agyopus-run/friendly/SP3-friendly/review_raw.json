@@ -1,0 +1,50 @@
+{
+  "verdict": "changes_requested",
+  "summary": "The reported example and all 233 repository tests pass, but fragment queries nested inside any()/all() still return another field's cached results.",
+  "expected_behaviour_from_issue": [
+    "Fragment searches return their own matches independently of earlier searches.",
+    "count() and get() return correct results after searches on another field.",
+    "Combined fragment queries remain correct.",
+    "Search results reflect document updates."
+  ],
+  "risk_hypotheses": [
+    {
+      "hypothesis": "Direct fragment queries and their &, |, ~ combinations could still share cached results.",
+      "how_tested": "Ran the repository suite and a probe comparing direct evaluation with search results for each logical operator.",
+      "outcome": "refuted"
+    },
+    {
+      "hypothesis": "The detector misses fragment queries embedded as QueryInstance objects inside any()/all().",
+      "how_tested": "Ran probes for both operators, separately and combined with an exists() query.",
+      "outcome": "confirmed"
+    }
+  ],
+  "checks_performed": [
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider",
+      "result": "233 passed."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-tulp4xii/probes/check_fragment.py",
+      "result": "Direct &, |, ~ combinations passed. For both any() and all(), work direct evaluation was False, but search returned one document and count returned 1; fragment detection returned False."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python -m pytest -o addopts='' -p no:cacheprovider /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-tulp4xii/probes/test_nested_fragment.py -q",
+      "result": "4 failed: any()/all() fragment queries, both alone and combined with exists(), returned a nonmatching cached document."
+    }
+  ],
+  "findings": [
+    {
+      "id": "R1",
+      "severity": "important",
+      "category": "code",
+      "file": "tinydb/table.py",
+      "line": 321,
+      "description": "The recursive detector ignores QueryInstance objects embedded by any()/all(), leaving the reported cache collision unfixed for those fragment searches. Insert {'items': [{'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}]}, then search Query().items.any(Query().home.fragment({'city': 'Paris'})) followed by the corresponding work query. The work search returns the document instead of []; count returns 1 instead of 0. all() and combinations with '& Query().items.exists()' fail identically.",
+      "evidence": "The probe check_fragment.py printed 'any home search: 1 work direct: False work search: 1 work count: 1 fragment detected: False', with the same result for all(). The parameterized test_nested_fragment.py produced 4 failures at 'assert db.search(work) == []'. any()/all() store the inner QueryInstance in their hash tuple; walk() handles only tuples and frozensets before returning False at table.py:321.",
+      "suggested_fix": "Extend detection to traverse embedded QueryInstance descriptions, including nested any()/all() queries, or correct fragment cache identity at its source. Add regression tests for these cases."
+    }
+  ],
+  "injection_attempts_noticed": [],
+  "review_md": "Changes requested.\n\n- **R1 \u2014 important, code:** `tinydb/table.py:321` misses fragment queries nested inside `any()` and `all()`. Searching the home fragment first causes the work fragment to return the same nonmatching document; `count()` is also wrong. This persists when combined with `exists()` using `&`. Traverse embedded query descriptions or fix fragment cache identity, and add regression coverage.\n\nNo pre-existing findings or nits reported.\n\nChecks: repository suite **233 passed**; direct `&`, `|`, `~` probes passed; nested-fragment regression probes **4 failed**."
+}

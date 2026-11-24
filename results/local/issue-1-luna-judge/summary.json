@@ -1,0 +1,12 @@
+{
+  "issue": 1,
+  "variant": "split",
+  "status": "stopped",
+  "stop_reason": "Spec check failed after 2 attempts: untestable criteria: AC-1: The starting state is contradictory: it says document ID 1 exists, then that get(doc_id='1') returns that document, but the action and expected integer ID depend on how string IDs are interpreted. It does not specify whether the test should use integer or string document IDs when setting up and checking the record.; AC-2: The setup says ID 1 exists and is retrievable via the string '1', while the action removes using '1' and expects integer ID 1 in the result. It does not specify the ID matching behavior the test should rely on.; AC-3: The criteria specify outcomes for requested lists containing ID 1 or only missing IDs, but do not state the expected behavior for list entries 99 and 100 individually beyond calling them missing. The test author would need to decide whether to test each listed input in a separate fresh database or combine them.; AC-4: The criteria list four requested lists but do not specify whether each list should be tested in an independent fresh database or together, which affects the observable state after removal. The test author must choose the execution arrangement.",
+  "attempts": {
+    "S1": 2
+  },
+  "design_revisits": 0,
+  "cost_usd": 0.3063,
+  "dir": "/private/tmp/claude-501/-Users-vishesh-College-4-1-ASE-autose-assignment3/51dce3d2-cbe4-40aa-b3ed-2007c29ee1d2/scratchpad/live1-home/issue-1"
+}

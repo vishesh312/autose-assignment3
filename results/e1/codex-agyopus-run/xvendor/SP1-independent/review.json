@@ -1,0 +1,62 @@
+{
+  "checks_performed": [
+    {
+      "command": "cd pr && python -m pytest -q",
+      "result": "235 passed in 0.78s"
+    },
+    {
+      "command": "python -m pytest probes/test_probe_issue_repro.py probes/test_probe_edge_cases.py -v",
+      "result": "20 passed in 0.07s"
+    },
+    {
+      "command": "git checkout base -- tinydb/table.py && python -m pytest tests/test_autose_issue_1.py -q",
+      "result": "6 failed, 1 passed \u2014 test_ac1_update, test_ac1_callable, test_ac2_remove, test_ac3_mixed, test_ac4_missing, test_ac5_json all FAILED on base code"
+    },
+    {
+      "command": "git diff HEAD -- tinydb/table.py",
+      "result": "No diff \u2014 HEAD restored correctly after base checkout test"
+    }
+  ],
+  "expected_behaviour_from_issue": [
+    "update(fields, doc_ids=['1']) should update document 1 and return [1], matching get(doc_id='1') behaviour",
+    "remove(doc_ids=['1']) should remove document 1 and return [1], matching get(doc_id='1') behaviour",
+    "Mixed int and string IDs in the same call (e.g. doc_ids=[1, '2']) should work correctly",
+    "Non-existent string IDs should be silently skipped (same as non-existent int IDs)",
+    "Returned IDs should be int (the document_id_class), not strings",
+    "The fix should work with both MemoryStorage and JSON file storage",
+    "The fix should work with named tables (db.table('foo'))",
+    "Existing int-based doc_ids usage must not regress"
+  ],
+  "findings": [],
+  "injection_attempts_noticed": [],
+  "review_md": "# \u2705 Approve\n\n## Summary\n\nThis PR correctly fixes the reported issue: `update()` and `remove()` now accept string document IDs (e.g. `'1'`) by normalizing them to their string form for matching, using the same approach that `get()` already uses. The fix is minimal, well-targeted, and introduces no regressions.\n\n## Approach\n\nThe fix introduces a `_existing_ids()` static method that:\n1. Builds a lookup `{str(key): key}` from the table's actual keys (ints, after `_update_table`'s conversion)\n2. Matches stringified requested IDs against this lookup\n3. Returns the original int keys, with deduplication\n\nBoth `update()` and `remove()` use this helper in their updater closures, replacing the previous `doc_id for doc_id in requested_ids if doc_id in table` pattern that required exact type match.\n\nThis is architecturally sound \u2014 it works at the same layer as the existing code, only changes the ID matching logic, and preserves the atomic updater pattern and all storage/cache conventions.\n\n## Testing\n\n- **Full suite**: 235 tests pass\n- **20 custom probes**: All pass, covering the exact issue repro, int regression, cond-based queries, upsert, named tables, JSON roundtrip, callable updaters, deduplication, non-numeric string IDs, and `_existing_ids` unit tests\n- **PR tests validated against base**: 6 of 7 PR tests fail on the base code, confirming they exercise the actual fix\n\n## Risk Hypotheses Tested\n\n| Hypothesis | Outcome |\n|---|---|\n| Regression in int-based or cond-based operations | Refuted \u2014 full suite + probes pass |\n| `_existing_ids` returns wrong key type | Refuted \u2014 returns original int keys |\n| PR tests vacuous | Refuted \u2014 6/7 fail on base |\n| Non-numeric string IDs crash | Refuted \u2014 silently skipped |\n| Duplicate IDs cause double-mutation | Refuted \u2014 deduplication works |\n\n## Nits\n\nNone worth raising. The code is clean, well-documented, and follows existing patterns.\n",
+  "risk_hypotheses": [
+    {
+      "how_tested": "Ran full test suite (235 tests pass) plus dedicated probes: test_issue_repro_int_still_works, test_update_with_cond_still_works, test_remove_with_cond_still_works, test_update_no_cond_no_ids_updates_all, test_upsert_still_works, test_update_multiple_still_works",
+      "hypothesis": "The fix covers update() and remove() but might break existing int-based doc_ids usage or cond-based queries (regression)",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Directly tested _existing_ids with int-keyed dict: Table._existing_ids({1: ..., 2: ...}, ['1', '3']) returns [1, 3] with int types. Also ran test_existing_ids_returns_original_keys probe and all update/remove probes.",
+      "hypothesis": "_existing_ids returns string keys instead of int keys, causing perform_update/del to fail with KeyError on the int-keyed table dict inside _update_table's updater",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Checked out base version of tinydb/table.py and ran PR tests: 6 of 7 failed, confirming the tests exercise the actual fix",
+      "hypothesis": "PR tests are vacuous and would pass even without the fix (testing the wrong thing)",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Ran test_non_numeric_string_ids_handled probe: db.update({'x': 2}, doc_ids=['abc']) returns [] without error. The _existing_ids method matches by string form against existing int keys; 'abc' won't match any stringified int key, so it's silently skipped.",
+      "hypothesis": "Non-numeric string IDs like 'abc' could cause an unhandled exception in _existing_ids or in int() conversion",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Ran test_duplicate_ids_deduplicated probe and PR's test_ac3_same_document_given_as_int_and_string: both confirm deduplication works correctly, returning [1] only once",
+      "hypothesis": "Duplicate IDs (e.g. [1, '1']) could cause double-update or double-delete",
+      "outcome": "refuted"
+    }
+  ],
+  "summary": "The PR correctly fixes the issue: `update()` and `remove()` now accept string document IDs (like `'1'`) by converting them to their string form for matching, using the same approach that `get()` already uses. The fix is minimal, well-targeted, and architecturally sound \u2014 it works at the right layer (`_existing_ids` helper used by both `update` and `remove` updater closures) and preserves all existing behavior. All 235 existing tests pass, all 20 of my probes pass, and 6 of 7 PR tests correctly fail on the base code, confirming they test the actual fix.",
+  "verdict": "approve"
+}

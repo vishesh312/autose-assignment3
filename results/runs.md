@@ -8,22 +8,26 @@ In `notes`, record for every run: the submission-repo commit it used (`sub@<sha>
 
 | item | Actions run | PR | review | status | notes |
 |---|---|---|---|---|---|
-| issue-1 | | | | | |
-| issue-2 | | | | | |
-| issue-3 | | | | | |
-| issue-4 | | | | | |
-| issue-5 (before answer) | | | | | |
-| issue-5 (after answer, re-trigger) | | | | | |
+| issue-1 | [45405751306](https://github.com/vishesh312/tinydb/actions/runs/45405751306) | [#14](https://github.com/vishesh312/tinydb/pull/14) | round 1 invalid (quota) | awaiting-human | sub@fd20dd7 / fork@eec31b7. 13:39–13:46 UTC. S1–S4 passed first attempt each (10 new tests fail on base); PR opened, CI green. Reviewer call hit the ChatGPT usage limit ("try again at 6:19 PM" UTC = 23:49 IST) hit at ~13:45 UTC by the concurrent CI runs + local E1/E2 on the same account; one re-ask also failed, so the review was posted as INVALID (not an approval) and the run ended `awaiting-human` (ADR-013 fail-safe). Build notional $0.61. Hidden tests on PR head: **4/4**. Ledger: `results/ledgers/45405751306-*.jsonl` |
+| issue-2 | [45405756174](https://github.com/vishesh312/tinydb/actions/runs/45405756174) | [#15](https://github.com/vishesh312/tinydb/pull/15) | round 1 invalid (quota) | awaiting-human | Same commits. S1–S4 first attempt (5 new tests fail on base). Review blocked by the usage limit → `awaiting-human`. Build notional $0.57. Hidden: **3/3** |
+| issue-3 | [45405761409](https://github.com/vishesh312/tinydb/actions/runs/45405761409) | [#16](https://github.com/vishesh312/tinydb/pull/16) | round 1 invalid (quota) | awaiting-human | Same commits. S1–S4 first attempt. Review blocked by the usage limit → `awaiting-human`. Build notional $0.64. Hidden: **4/4** |
+| issue-4 (run 1) | [45405768918](https://github.com/vishesh312/tinydb/actions/runs/45405768918) | — | — | failed (S1) | Real defect in our code: the Codex strict-schema adapter dropped a required-but-nullable field (`default_if_unanswered: null`), so the Analyst's spec failed validation twice. Fixed in sub@e7c9eed (schema-aware null handling + regression test), synced via fork PR [#13](https://github.com/vishesh312/tinydb/pull/13) |
+| issue-4 (run 2, re-trigger after fix) | [45406562390](https://github.com/vishesh312/tinydb/actions/runs/45406562390) | — | — | failed (S1) | S1 Analyst calls failed: ChatGPT usage limit ("try again at 6:19 PM" UTC = 23:49 IST) hit at ~13:45 UTC by the concurrent CI runs + local E1/E2 on the same account. No artifacts beyond the ledger |
+| issue-5 (before answer, run 1) | [45405774086](https://github.com/vishesh312/tinydb/actions/runs/45405774086) | — | — | failed (S1) | Same schema-adapter defect as issue-4 run 1 (open questions → nullable default) |
+| issue-5 (before answer, run 2, re-trigger after fix) | [45406510262](https://github.com/vishesh312/tinydb/actions/runs/45406510262) | — | — | failed (S1) | ChatGPT usage limit ("try again at 6:19 PM" UTC = 23:49 IST) hit at ~13:45 UTC by the concurrent CI runs + local E1/E2 on the same account |
+| issue-5 (after answer, re-trigger) | not run | — | — | — | blocked by the usage limit; see local run below |
 
 ## Seeded-PR review runs (E1)
 
 | item | Actions run | PR | review | status | notes |
 |---|---|---|---|---|---|
-| SP1 (seeded) | not run yet | [#7](https://github.com/vishesh312/tinydb/pull/7) | — | PR open | opened by `open_seeded_prs.sh`; review is triggered with `/autose review` |
-| SP2 (seeded) | not run yet | [#8](https://github.com/vishesh312/tinydb/pull/8) | — | PR open | opened by `open_seeded_prs.sh`; review is triggered with `/autose review` |
-| SP3 (seeded) | not run yet | [#9](https://github.com/vishesh312/tinydb/pull/9) | — | PR open | opened by `open_seeded_prs.sh`; review is triggered with `/autose review` |
-| SP4 (seeded) | not run yet | [#10](https://github.com/vishesh312/tinydb/pull/10) | — | PR open | opened by `open_seeded_prs.sh`; review is triggered with `/autose review` |
-| SP5 (seeded) | not run yet | [#11](https://github.com/vishesh312/tinydb/pull/11) | — | PR open | opened by `open_seeded_prs.sh`; review is triggered with `/autose review` |
+| SP1 / A (GitHub) | [45406746710](https://github.com/vishesh312/tinydb/actions/runs/45406746710) | [#7](https://github.com/vishesh312/tinydb/pull/7) | invalid (quota) | awaiting-human | `/autose review` at 13:45 UTC; reviewer blocked by the ChatGPT usage limit ("try again at 6:19 PM" UTC = 23:49 IST) hit at ~13:45 UTC by the concurrent CI runs + local E1/E2 on the same account |
+| SP2 / A (GitHub) | [45406751208](https://github.com/vishesh312/tinydb/actions/runs/45406751208) | [#8](https://github.com/vishesh312/tinydb/pull/8) | invalid (quota) | awaiting-human | as above |
+| SP3 / A (GitHub) | [45406760196](https://github.com/vishesh312/tinydb/actions/runs/45406760196) | [#9](https://github.com/vishesh312/tinydb/pull/9) | invalid (quota) | awaiting-human | as above |
+| SP4 / A (GitHub) | [45406765289](https://github.com/vishesh312/tinydb/actions/runs/45406765289) | [#10](https://github.com/vishesh312/tinydb/pull/10) | invalid (quota) | awaiting-human | as above |
+| SP5 / A (GitHub) | [45406768058](https://github.com/vishesh312/tinydb/actions/runs/45406768058) | [#11](https://github.com/vishesh312/tinydb/pull/11) | invalid (quota) | awaiting-human | as above |
+
+The paired E1 comparison was run locally (`experiment/scripts/run_e1.sh`, no GitHub writes) before the limit was hit; results in `results/e1/`.
 
 `item` is `<seeded PR id> / A` (independent) or `<seeded PR id> / B` (friendly). Real AutoSE PRs reviewed by variant B are listed here too.
 
@@ -40,6 +44,13 @@ In `notes`, record for every run: the submission-repo commit it used (`sub@<sha>
 | item | Actions run | PR | review | status | notes |
 |---|---|---|---|---|---|
 | fork setup: `ci.yml` on push to `main` (no LLM) | [45340122654](https://github.com/vishesh312/tinydb/actions/runs/45340122654) | — | — | success | First live run after syncing the workflow into the fork (fork `main` = `edff96a` + `92ea08a` ARCHITECTURE.md + `6a76a2a` AutoSE). Confirms the lean CI (pytest + mypy) works and that upstream's CI and publish workflows are gone. |
-| codex CLI canary (`workflow_dispatch` → `canary`) | | | | not run yet | needs the `CODEX_AUTH_JSON` secret |
+| codex CLI canary (`workflow_dispatch` → `canary`) | [45405561615](https://github.com/vishesh312/tinydb/actions/runs/45405561615) | — | — | success | All checks pass on ubuntu-latest: codex smoke call, structured output, planted AGENTS.md ignored, write denied in read-only sandbox, sandboxed command sees no credential and no network (`UNSET NET_BLOCKED`). Same canary passed locally on macOS. |
 
 Canaries (DESIGN §10.1, ADR-011): `--bare` ignores a planted `CLAUDE.md` and hook, a denied tool is really denied, `structured_output` comes back in the expected shape, and the bash sandbox setting works on `ubuntu-latest`.
+
+## Local pipeline runs (no GitHub)
+
+| item | Actions run | PR | review | status | notes |
+|---|---|---|---|---|---|
+| issue-1 / codex, judge gpt-6-luna (first live call of the pipeline) | local (no GitHub) | — | — | stopped (S1) | 2026-11-24 ~13:25 UTC, sub@fd20dd7 pre-commit tree. Analyst spec was concrete, but the gpt-6-luna Judge failed it twice on test-layout nitpicks ("fresh DB per case?"). Led to the judge prompt clarification and judge model = gpt-6.1-sol low effort (ADR-014 revision note). Saved: `results/local/issue-1-luna-judge/` |
+| issue-1 / codex, calibrated judge | local (no GitHub) | — | — | tests-passed | S1–S4 first attempt each, notional $0.64; hidden 4/4, 12 generated tests, 0 fail on reference. Saved: `results/local/issue-1-codex/` |

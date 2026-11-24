@@ -1,0 +1,23 @@
+{
+  "issue": 3,
+  "round": 1,
+  "head_sha": "63c9b85fb4a99ed2897e9e7207999a523040ba71",
+  "base_ref": "edff96aeb2616402e9489d46e90a592c05565621",
+  "variant": "friendly",
+  "model": "gpt-6.1-sol",
+  "valid": true,
+  "problems": [],
+  "cost_usd": 0.2034,
+  "reviewer_verdict": "changes_requested",
+  "verification": {
+    "original_verdict": "changes_requested",
+    "counts": {
+      "confirmed": 1,
+      "plausible": 0,
+      "rejected": 0,
+      "unverified": 0
+    },
+    "cost_usd": 0.062
+  },
+  "review_rules": false
+}

@@ -1,0 +1,14 @@
+{
+  "issue": 1,
+  "round": 1,
+  "head_sha": "4a3cbca150c49c85b0a1e17adb5de406a3252983",
+  "base_ref": "edff96aeb2616402e9489d46e90a592c05565621",
+  "variant": "independent",
+  "model": "gpt-6-astra",
+  "valid": true,
+  "problems": [],
+  "cost_usd": 0.2046,
+  "reviewer_verdict": "approve",
+  "verification": null,
+  "review_rules": false
+}

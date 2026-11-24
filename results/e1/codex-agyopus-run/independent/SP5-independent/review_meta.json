@@ -1,0 +1,23 @@
+{
+  "issue": 4,
+  "round": 1,
+  "head_sha": "ab7aafcb1492032498b4b25983a68541e99d6a8f",
+  "base_ref": "edff96aeb2616402e9489d46e90a592c05565621",
+  "variant": "independent",
+  "model": "gpt-6-astra",
+  "valid": true,
+  "problems": [],
+  "cost_usd": 0.3051,
+  "reviewer_verdict": "changes_requested",
+  "verification": {
+    "original_verdict": "changes_requested",
+    "counts": {
+      "confirmed": 1,
+      "plausible": 1,
+      "rejected": 0,
+      "unverified": 0
+    },
+    "cost_usd": 0.123
+  },
+  "review_rules": false
+}

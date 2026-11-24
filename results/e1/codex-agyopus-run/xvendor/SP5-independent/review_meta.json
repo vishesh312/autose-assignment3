@@ -1,0 +1,16 @@
+{
+  "issue": 4,
+  "round": 1,
+  "head_sha": "1009beeb393832fcc7c589455097cbc874cf4945",
+  "base_ref": "edff96aeb2616402e9489d46e90a592c05565621",
+  "variant": "independent",
+  "model": "claude-opus-4-6-thinking",
+  "valid": false,
+  "problems": [
+    "agent ended with error_error: "
+  ],
+  "cost_usd": 0.5224,
+  "reviewer_verdict": null,
+  "verification": null,
+  "review_rules": false
+}

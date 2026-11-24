@@ -1,0 +1,24 @@
+{
+  "verdicts": [
+    {
+      "ac": "AC-1",
+      "testable": false,
+      "reason": "The starting state is contradictory: it says document ID 1 exists, then that get(doc_id='1') returns that document, but the action and expected integer ID depend on how string IDs are interpreted. It does not specify whether the test should use integer or string document IDs when setting up and checking the record."
+    },
+    {
+      "ac": "AC-2",
+      "testable": false,
+      "reason": "The setup says ID 1 exists and is retrievable via the string '1', while the action removes using '1' and expects integer ID 1 in the result. It does not specify the ID matching behavior the test should rely on."
+    },
+    {
+      "ac": "AC-3",
+      "testable": false,
+      "reason": "The criteria specify outcomes for requested lists containing ID 1 or only missing IDs, but do not state the expected behavior for list entries 99 and 100 individually beyond calling them missing. The test author would need to decide whether to test each listed input in a separate fresh database or combine them."
+    },
+    {
+      "ac": "AC-4",
+      "testable": false,
+      "reason": "The criteria list four requested lists but do not specify whether each list should be tested in an independent fresh database or together, which affects the observable state after removal. The test author must choose the execution arrangement."
+    }
+  ]
+}

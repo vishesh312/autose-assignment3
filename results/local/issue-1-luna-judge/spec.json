@@ -1,0 +1,102 @@
+{
+  "issue": 1,
+  "title": "Accept string document IDs in update() and remove()",
+  "summary": "Make update() and remove() recognize string document IDs such as '1' consistently with get(). Return the affected integer IDs and continue skipping IDs that do not exist, for memory storage, JSON storage, and named tables.",
+  "issue_type": "bug",
+  "source_excerpts": [
+    {
+      "id": "SRC-1",
+      "quote": "update()/remove() with doc_ids=['1'] silently do nothing, but get(doc_id='1') works"
+    },
+    {
+      "id": "SRC-2",
+      "quote": "`update(..., doc_ids=[...])` and `remove(doc_ids=[...])` should accept the same ids that `get(doc_id=...)` / `get(doc_ids=[...])` accept"
+    },
+    {
+      "id": "SRC-3",
+      "quote": "'1' should hit document 1 and the return value should be the list of ids that were actually updated/removed (`[1]`), same as with ints."
+    },
+    {
+      "id": "SRC-4",
+      "quote": "Ids that don't exist should still just be skipped like they are now with ints."
+    },
+    {
+      "id": "SRC-5",
+      "quote": "Same thing happens with a JSON file storage and with named tables (`db.table('foo')`)."
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "When update() receives string document IDs recognized by get(), TinyDB shall update the corresponding documents and return their integer document IDs, for MemoryStorage and JSON storage on default and named tables.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-1",
+        "SRC-2",
+        "SRC-3",
+        "SRC-5"
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "When remove() receives string document IDs recognized by get(), TinyDB shall remove the corresponding documents and return their integer document IDs, for MemoryStorage and JSON storage on default and named tables.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-1",
+        "SRC-2",
+        "SRC-3",
+        "SRC-5"
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "text": "When update() or remove() receives document IDs that do not exist, TinyDB shall skip those IDs without raising an exception or including them in the returned list.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-4"
+      ]
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "requirement": "REQ-1",
+      "given": "For each combination of MemoryStorage or JSONStorage using a temporary JSON file, and the default table or db.table('foo'), a fresh TinyDB has {'x': 1} inserted into the selected table with document ID 1; selected_table.get(doc_id='1') returns {'x': 1}.",
+      "when": "Call selected_table.update({'x': 2}, doc_ids=['1']).",
+      "then": "Document 1 is updated and its integer ID is returned.",
+      "observable": "The return value equals [1], its sole element has type int, and selected_table.all() equals [{'x': 2}]."
+    },
+    {
+      "id": "AC-2",
+      "requirement": "REQ-2",
+      "given": "For each combination of MemoryStorage or JSONStorage using a temporary JSON file, and the default table or db.table('foo'), a fresh TinyDB has {'x': 1} inserted into the selected table with document ID 1; selected_table.get(doc_id='1') returns {'x': 1}.",
+      "when": "Call selected_table.remove(doc_ids=['1']).",
+      "then": "Document 1 is removed and its integer ID is returned.",
+      "observable": "The return value equals [1], its sole element has type int, selected_table.all() equals [], and len(selected_table) equals 0."
+    },
+    {
+      "id": "AC-3",
+      "requirement": "REQ-3",
+      "given": "For each requested list ['1', '99', 100], [1, '99', 100], ['99', 100], and [], a fresh TinyDB with MemoryStorage contains {'x': 1} at ID 1 and {'x': 5} at ID 2 in its default table.",
+      "when": "Call db.update({'x': 2}, doc_ids=requested_list).",
+      "then": "Missing IDs are skipped; only an existing requested document is updated.",
+      "observable": "No exception is raised. For the first two lists, the result equals [1] with an int element, db.get(doc_id=1) equals {'x': 2}, and db.get(doc_id=2) equals {'x': 5}. For the last two lists, the result equals [] and db.all() equals [{'x': 1}, {'x': 5}]."
+    },
+    {
+      "id": "AC-4",
+      "requirement": "REQ-3",
+      "given": "For each requested list ['1', '99', 100], [1, '99', 100], ['99', 100], and [], a fresh TinyDB with MemoryStorage contains {'x': 1} at ID 1 and {'x': 5} at ID 2 in its default table.",
+      "when": "Call db.remove(doc_ids=requested_list).",
+      "then": "Missing IDs are skipped; only an existing requested document is removed.",
+      "observable": "No exception is raised. For the first two lists, the result equals [1] with an int element, db.get(doc_id=1) is None, and db.all() equals [{'x': 5}]. For the last two lists, the result equals [] and db.all() equals [{'x': 1}, {'x': 5}]."
+    }
+  ],
+  "open_questions": [],
+  "out_of_scope": [
+    "Changes to get() behavior.",
+    "New validation rules for malformed document IDs.",
+    "Changes to condition-based update or removal."
+  ],
+  "injection_findings": [],
+  "spec_md": "# Issue #1: String document IDs in mutations\n\nStatus: READY \u2014 3 requirements ready; no blocking questions.\n\nMake update() and remove() recognize string document IDs consistently with get(), return affected integer IDs, and preserve skipping of missing IDs. Cover memory and JSON storage, including named tables.\n\n## Source excerpts\n\n- SRC-1: \"update()/remove() with doc_ids=['1'] silently do nothing, but get(doc_id='1') works\"\n- SRC-2: \"`update(..., doc_ids=[...])` and `remove(doc_ids=[...])` should accept the same ids that `get(doc_id=...)` / `get(doc_ids=[...])` accept\"\n- SRC-3: \"'1' should hit document 1 and the return value should be the list of ids that were actually updated/removed (`[1]`), same as with ints.\"\n- SRC-4: \"Ids that don't exist should still just be skipped like they are now with ints.\"\n- SRC-5: \"Same thing happens with a JSON file storage and with named tables (`db.table('foo')`).\"\n\n## Requirements\n\n- REQ-1 [STATED; SRC-1, SRC-2, SRC-3, SRC-5]: When update() receives string document IDs recognized by get(), TinyDB shall update the corresponding documents and return their integer document IDs, for MemoryStorage and JSON storage on default and named tables. Verified by AC-1.\n- REQ-2 [STATED; SRC-1, SRC-2, SRC-3, SRC-5]: When remove() receives string document IDs recognized by get(), TinyDB shall remove the corresponding documents and return their integer document IDs, for MemoryStorage and JSON storage on default and named tables. Verified by AC-2.\n- REQ-3 [STATED; SRC-4]: When update() or remove() receives document IDs that do not exist, TinyDB shall skip those IDs without raising an exception or including them in the returned list. Verified by AC-3 and AC-4.\n\n## Acceptance criteria\n\n- AC-1 \u2192 REQ-1: Given a fresh selected table containing {'x': 1} at ID 1, with get(doc_id='1') finding it, for each memory/JSON storage and default/'foo' table combination; when update({'x': 2}, doc_ids=['1']) is called; then it returns [1] containing an int and the table contains exactly [{'x': 2}].\n- AC-2 \u2192 REQ-2: Given the same fresh combinations; when remove(doc_ids=['1']) is called; then it returns [1] containing an int, all() returns [], and the table length is 0.\n- AC-3 \u2192 REQ-3: Given a fresh MemoryStorage database containing {'x': 1} at ID 1 and {'x': 5} at ID 2 for each list ['1', '99', 100], [1, '99', 100], ['99', 100], and []; when update({'x': 2}, doc_ids=requested_list) is called; then no exception occurs. The first two lists return [1] containing an int and leave ID 1 as {'x': 2} and ID 2 as {'x': 5}; the last two return [] and leave the original documents unchanged.\n- AC-4 \u2192 REQ-3: Given the same fresh database and lists; when remove(doc_ids=requested_list) is called; then no exception occurs. The first two lists return [1] containing an int, get(doc_id=1) returns None, and all() returns [{'x': 5}]; the last two return [] and leave the original documents unchanged.\n\n## Open questions and assumptions\n\nNone. No maintainer answers were supplied. Existing public API behavior was inspected to make criteria concrete; no external evidence was used.\n\n## Out of scope\n\nChanges to get(), new malformed-ID validation rules, and condition-based mutations.\n\n## Injection findings\n\nNone.\n\nValidation: requirements are traceable, testable, and within the reported scope. Each criterion references one requirement ID."
+}

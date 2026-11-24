@@ -1,0 +1,63 @@
+{
+  "approach": "Normalize explicit document IDs through self.document_id_class in Table.update and Table.remove before their existing membership filtering. With the default ID class, '1' becomes integer 1, so existing documents are changed and integer IDs returned while missing IDs remain skipped. Retain the existing _update_table path for both storage backends and all table names. Only these two methods need changes.",
+  "changes": [
+    {
+      "path": "tinydb/table.py",
+      "symbol": "Table.update",
+      "kind": "modify",
+      "new_file": false,
+      "description": "Change doc_ids annotation to Optional[Iterable[Union[int, str]]]. In the explicit-doc_ids branch, replace requested_ids = list(doc_ids) with a list comprehension applying self.document_id_class to each requested ID before entering _update_table. Keep the existing updater's membership filtering, affected-ID collection, and perform_update calls. Thus canonical integer IDs are used for lookup and returned, and valid but nonexistent IDs are skipped. Keep input iteration order and existing duplicate handling. Update the method docstring to describe integer and string IDs. Preserve mapping/callable fields handling and all query/unconditional branches. Add no validation, exception wrapping, or new error messages.",
+      "acs": [
+        "AC-1",
+        "AC-3",
+        "AC-5"
+      ]
+    },
+    {
+      "path": "tinydb/table.py",
+      "symbol": "Table.remove",
+      "kind": "modify",
+      "new_file": false,
+      "description": "Change doc_ids annotation to Optional[Iterable[Union[int, str]]]. In the explicit-doc_ids branch, replace requested_ids = list(doc_ids) with a list comprehension applying self.document_id_class to each requested ID before entering _update_table. Keep the existing updater's membership filtering, affected-ID collection, and deletion loop. Thus canonical integer IDs are used for lookup and returned, and valid but nonexistent IDs are skipped. Keep input iteration order and existing duplicate handling. Update the method docstring to describe integer and string IDs. Preserve the query branch and existing error when neither selector is provided. Add no validation, exception wrapping, or new error messages.",
+      "acs": [
+        "AC-2",
+        "AC-4",
+        "AC-6"
+      ]
+    }
+  ],
+  "public_api": [
+    {
+      "signature": "Table.update(self, fields: Union[Mapping, Callable[[MutableMapping], None]], cond: Optional[QueryLike] = None, doc_ids: Optional[Iterable[Union[int, str]]] = None) -> list[int]",
+      "behaviour": "Available directly on a Table and through TinyDB's default-table forwarding. With the default document ID class, explicit integer IDs and corresponding numeric string IDs select the same documents. Mapping fields update selected documents; callable fields retain their existing mutation behavior. Returns integer IDs for existing targets only. With document 1 present, doc_ids=['1'] returns [1] and changes its fields. With IDs 1, 2, 3 present, doc_ids=['1', 2, '99', 100] returns [1, 2], updates only 1 and 2, and preserves the count. Missing-only doc_ids=['99', 100] returns [] and preserves documents. These valid missing IDs raise no exception. Behavior applies to MemoryStorage and JSONStorage, default and named tables. No new contract is introduced for malformed IDs, duplicates, query selection, or unconditional updates."
+    },
+    {
+      "signature": "Table.remove(self, cond: Optional[QueryLike] = None, doc_ids: Optional[Iterable[Union[int, str]]] = None) -> list[int]",
+      "behaviour": "Available directly on a Table and through TinyDB's default-table forwarding. With the default document ID class, explicit integer IDs and corresponding numeric string IDs select the same documents. Returns integer IDs for existing targets only. With document 1 present, doc_ids=['1'] returns [1] and leaves the table empty. With IDs 1, 2, 3 present, doc_ids=['1', 2, '99', 100] returns [1, 2], removes only 1 and 2, and leaves document 3 unchanged. Missing-only doc_ids=['99', 100] returns [] and preserves documents. These valid missing IDs raise no exception. Behavior applies to MemoryStorage and JSONStorage, default and named tables. No new contract is introduced for malformed IDs, duplicates, or query selection."
+    }
+  ],
+  "test_hooks": [
+    "Import TinyDB from tinydb and MemoryStorage and JSONStorage from tinydb.storages. Construct fresh databases with TinyDB(storage=MemoryStorage) or TinyDB(str(tmp_path / 'case.json'), storage=JSONStorage); close databases after use.",
+    "For AC-1 and AC-2 independently cover all four storage/target combinations. Use target=db for the default table or target=db.table('foo') for the named table. Use a fresh database and JSON path per case.",
+    "Insert {'x': 1} using target.insert and assert its ID is 1. Check target.get(doc_id='1') before mutation. Afterward inspect target.all(), target.get(doc_id=1), and len(target) as required. Document objects compare equal to dictionaries; assert type(returned_id) is int separately.",
+    "For AC-3 and AC-4 use separate fresh MemoryStorage databases and insert {'x': 1}, {'x': 2}, {'x': 3} in order. Check affected IDs, all relevant document contents, and the required remaining count or list.",
+    "For AC-5 and AC-6 use separate fresh MemoryStorage databases containing only document 1; missing-only operations must return [] and preserve that document.",
+    "The existing db fixture in tests/conftest.py prepopulates three documents with int/char fields, so construct fresh databases explicitly for the acceptance setups.",
+    "Run the generated acceptance tests and existing tests/test_tinydb.py and tests/test_tables.py to check integer-ID, missing-ID, callable-update, and table behavior."
+  ],
+  "risks": [
+    "ARCHITECTURE.md is absent from the repository and was not found beneath its parent directory. Its sections and line references could not be verified; architecture checks rely on the constraints supplied in the task and the inspected implementation.",
+    "Applying document_id_class can reject malformed strings. The specification excludes new ID formats and validation policies; do not add malformed-ID acceptance tests or introduce special exception handling.",
+    "Duplicate IDs, including aliases such as [1, '1'], are outside the acceptance criteria. Preserve the existing loop structure rather than adding deduplication or defining new duplicate semantics.",
+    "Use self.document_id_class rather than hard-coded int to respect Table customization."
+  ],
+  "architecture_refs": [
+    "ARCHITECTURE.md \u00a73 Constraint 1 (task-supplied; file unavailable): no imports or __init__.py ordering changes.",
+    "ARCHITECTURE.md \u00a73 Constraint 2 and ADR-1 (task-supplied; file unavailable): retain whole-database Storage.read()/write() and None-as-empty handling through Table._update_table, verified at tinydb/table.py:818-851.",
+    "ARCHITECTURE.md \u00a73 Constraint 3 (task-supplied; file unavailable): both mutations retain _update_table and its cache invalidation at tinydb/table.py:853-854.",
+    "ARCHITECTURE.md \u00a73 Constraint 4 and ADR-3 (task-supplied; file unavailable): query construction, hashing, and LRU caching are untouched.",
+    "ARCHITECTURE.md \u00a73 Constraint 5 (task-supplied; file unavailable): normalize requested IDs using the same document_id_class used for writable table keys at tinydb/table.py:830-837; leave _get_next_id and monotonic allocation untouched.",
+    "ARCHITECTURE.md ADR-2 (task-supplied; file unavailable): retain storage middleware's existing wrapper interface without changes."
+  ],
+  "design_md": "## Approach\n\nNormalize explicit IDs with `self.document_id_class` in `Table.update` and `Table.remove` before their existing membership checks. Writable table keys already use that class; with its default `int`, string `'1'` therefore selects document 1 and the result contains integer `1`. Keep persistence and cache invalidation through `_update_table`.\n\n## Changes\n\n| Path | Symbol | Kind | ACs |\n| --- | --- | --- | --- |\n| tinydb/table.py | Table.update | modify | AC-1, AC-3, AC-5 |\n| tinydb/table.py | Table.remove | modify | AC-2, AC-4, AC-6 |\n\nIn each method, replace `requested_ids = list(doc_ids)` with `[self.document_id_class(doc_id) for doc_id in doc_ids]`. Broaden `doc_ids` to `Optional[Iterable[Union[int, str]]]` and document string support. Retain filtering inside the updater, affected-ID collection, mutation loops, and existing selector branches. No helper or new import is needed.\n\n## Public API and test hooks\n\n- `Table.update(self, fields: Union[Mapping, Callable[[MutableMapping], None]], cond: Optional[QueryLike] = None, doc_ids: Optional[Iterable[Union[int, str]]] = None) -> list[int]`\n- `Table.remove(self, cond: Optional[QueryLike] = None, doc_ids: Optional[Iterable[Union[int, str]]] = None) -> list[int]`\n\nBoth accept existing integer IDs and corresponding numeric strings, returning integer IDs for existing targets. Missing IDs are skipped without exceptions; missing-only requests return `[]` and preserve documents. Mixed `['1', 2, '99', 100]` requests affect only IDs 1 and 2. Update retains mapping and callable fields support.\n\nConstruct fresh databases explicitly using `TinyDB(storage=MemoryStorage)` or `TinyDB(str(tmp_path / 'case.json'), storage=JSONStorage)`. Use `db` or `db.table('foo')` as target. Independently test AC-1 and AC-2 across all four configurations; use fresh MemoryStorage databases for AC-3 through AC-6. Check contents, counts, missing lookups, and exact integer result types. The existing `db` fixture is prepopulated and does not match these setups. Run generated acceptance tests and existing TinyDB/table tests.\n\n## Traceability\n\n- AC-1 \u2192 Table.update: string ID updates document 1 across four configurations.\n- AC-2 \u2192 Table.remove: string ID removes document 1 across four configurations.\n- AC-3 \u2192 Table.update: mixed existing and missing IDs.\n- AC-4 \u2192 Table.remove: mixed existing and missing IDs.\n- AC-5 \u2192 Table.update: missing-only IDs.\n- AC-6 \u2192 Table.remove: missing-only IDs.\n\n## Architecture constraints\n\n`ARCHITECTURE.md` is absent, so its references cannot be verified. Against the task-supplied constraints: imports and initialization order remain unchanged (Constraint 1); `_update_table` retains whole-database storage and None-as-empty handling (Constraint 2, ADR-1), and clears the query cache after writes (Constraint 3). Query hashing and LRU behavior remain untouched (Constraint 4, ADR-3). Requested IDs use the existing configurable ID class, matching writable keys, while allocation remains unchanged (Constraint 5). Middleware interfaces remain unchanged (ADR-2).\n\nVerified implementation anchors: `Table.update` at line 427, `Table.remove` at line 625, writable-key conversion at lines 830\u2013837, storage write at line 851, and cache clearing at lines 853\u2013854 of `tinydb/table.py`.\n\n## Risks\n\nThe missing architecture document limits verification. Malformed strings and duplicate aliases are outside the specification; introduce no validation, exception wrapping, or deduplication policy. Use the configurable ID class rather than hard-coded `int`."
+}

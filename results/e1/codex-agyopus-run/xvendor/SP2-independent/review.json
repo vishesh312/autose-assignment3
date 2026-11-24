@@ -1,0 +1,90 @@
+{
+  "checks_performed": [
+    {
+      "command": "cd /private/var/.../pr && python -m pytest -q",
+      "result": "233 passed in 0.79s \u2014 all existing tests pass"
+    },
+    {
+      "command": "cd /private/var/.../pr && python -m pytest /var/.../probes/test_probe_append_semantics.py -v",
+      "result": "2 failed, 3 passed. FAILED test_append_list_value_adds_nested_list: Expected ['bug', ['a', 'b']] but got ['bug', 'a', 'b']. FAILED test_append_missing_field_with_list_value: Expected [['a', 'b']] but got ['a', 'b']."
+    },
+    {
+      "command": "git diff edff96a...HEAD --stat",
+      "result": "3 files changed: docs/usage.rst (+2), tests/test_autose_issue_3.py (+63), tinydb/operations.py (+13)"
+    },
+    {
+      "command": "git show edff96a:tinydb/operations.py",
+      "result": "Base has no append function \u2014 confirmed this is new code"
+    }
+  ],
+  "expected_behaviour_from_issue": [
+    "append('tags', 'urgent') appends 'urgent' as a single element to the list in 'tags'",
+    "append('tags', ['a', 'b']) adds ['a', 'b'] as one nested-list element (like list.append), NOT extending the list",
+    "If the document doesn't have the field, create it as [value] \u2014 a one-element list containing value",
+    "Works with both cond= and doc_ids= like the other operations",
+    "The change is persisted to the JSON file (goes through normal write path)"
+  ],
+  "findings": [
+    {
+      "category": "code",
+      "description": "append() uses extend when value is a list, contradicting the issue's explicit requirement for list.append semantics. The issue says: 'append('tags', ['a', 'b']) adds a nested list, it doesn't extend \u2014 like list.append'. The implementation does `items = value if isinstance(value, list) else [value]; doc.setdefault(field, []).extend(items)`, which flattens list values instead of nesting them.",
+      "evidence": "Probe test_append_list_value_adds_nested_list: append('tags', ['a', 'b']) on doc with tags=['bug'] produces ['bug', 'a', 'b'] instead of ['bug', ['a', 'b']]. Probe test_append_missing_field_with_list_value: append('tags', ['a', 'b']) on doc without 'tags' produces ['a', 'b'] instead of [['a', 'b']].",
+      "file": "tinydb/operations.py",
+      "id": "F1",
+      "line": 85,
+      "severity": "important",
+      "suggested_fix": "Replace lines 85-86 with simply: `doc.setdefault(field, []).append(value)` \u2014 this gives correct list.append semantics for all value types including lists, and handles the missing-field case.",
+      "verification": "unverified",
+      "verification_reason": "verifier output unusable (agent ended with error_error: ); the finding keeps blocking"
+    },
+    {
+      "category": "tests",
+      "description": "No test passes a list as the value to append(), so the core semantic distinction the issue asks for (append vs extend) is not tested. The issue explicitly gives append('tags', ['a', 'b']) as an example.",
+      "evidence": "All test calls use scalar values: 'urgent', 'backend', 7, 'wontfix', 'started', 'stopped'. None pass a list value.",
+      "file": "tests/test_autose_issue_3.py",
+      "id": "F2",
+      "line": null,
+      "severity": "important",
+      "suggested_fix": "Add a test like: db.update(append('tags', ['a', 'b']), where(...)); assert doc['tags'] == ['bug', ['a', 'b']] \u2014 verifying nested-list behavior.",
+      "verification": "unverified",
+      "verification_reason": "verifier output unusable (agent ended with error_error: ); the finding keeps blocking"
+    }
+  ],
+  "injection_attempts_noticed": [],
+  "review_md": "# Review: `append` operation for list fields (Issue #3)\n\n## Verdict: \u274c Changes Requested\n\n## Critical Bug\n\n### F1 \u2014 `append()` extends instead of appending when value is a list (`important`)\n\n**[operations.py:85-86](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-9yryz5b3/pr/tinydb/operations.py#L85-L86)**\n\nThe issue explicitly states:\n\n> `append('tags', ['a', 'b'])` adds a nested list, it doesn't extend \u2014 like `list.append`\n\nBut the implementation does:\n```python\nitems = value if isinstance(value, list) else [value]\ndoc.setdefault(field, []).extend(items)\n```\n\nThis **flattens** list values. Probe result:\n- `append('tags', ['a', 'b'])` on `['bug']` \u2192 `['bug', 'a', 'b']` \u274c\n- Expected: `['bug', ['a', 'b']]` \u2705\n\n**Fix:** Replace lines 85-86 with `doc.setdefault(field, []).append(value)`. This single call gives correct `list.append` semantics for all value types and handles missing fields.\n\n### F2 \u2014 Tests don't cover the list-value case (`important`)\n\nNo test ever passes a list as the `value` argument to `append()`, so the extend-vs-append bug goes undetected. The issue explicitly names this case.\n\n## What Works\n\n- Scalar appends (strings, ints) \u2705\n- Missing-field auto-creation with scalar values \u2705\n- `doc_ids=` support \u2705\n- JSON persistence \u2705\n- Documentation updated \u2705\n\n## Hypotheses Tested\n\n| Hypothesis | Outcome |\n|---|---|\n| Implementation extends instead of appending for list values | **Confirmed** \u2014 probe shows flattening |\n| Missing-field + list value creates wrong structure | **Confirmed** \u2014 `['a', 'b']` instead of `[['a', 'b']]` |\n| PR tests pass without the fix | Refuted \u2014 tests do exercise new code |\n| Changes not persisted to JSON | Refuted \u2014 persistence works correctly |\n\n## Commands Run\n\n- `python -m pytest -q` \u2192 233 passed\n- `python -m pytest probes/test_probe_append_semantics.py -v` \u2192 2 FAILED, 3 passed\n",
+  "risk_hypotheses": [
+    {
+      "how_tested": "Wrote probe test_probe_append_semantics.py::test_append_list_value_adds_nested_list: insert doc with tags=['bug'], call append('tags', ['a', 'b']), assert result is ['bug', ['a', 'b']]",
+      "hypothesis": "The implementation extends instead of appending when value is a list, contradicting the issue's explicit requirement for list.append semantics",
+      "outcome": "confirmed"
+    },
+    {
+      "how_tested": "The PR tests only pass scalar values (strings, int) to append, never a list value. They do exercise the new function so they wouldn't pass without it, but they miss the extend-vs-append bug the issue explicitly describes.",
+      "hypothesis": "The PR's own tests would pass without the fix (i.e. they don't actually test the new code)",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Wrote probe test_probe_append_semantics.py::test_append_missing_field_with_list_value: insert doc without 'tags', call append('tags', ['a', 'b']), assert result is [['a', 'b']]",
+      "hypothesis": "Missing-field case with a list value creates [value] wrong \u2014 creates the flat list instead of [[value]]",
+      "outcome": "confirmed"
+    },
+    {
+      "how_tested": "Probe test_probe_append_semantics.py::test_append_persisted_to_json \u2014 writes, closes, reopens, reads back. Passed.",
+      "hypothesis": "Changes are not persisted to JSON storage",
+      "outcome": "refuted"
+    }
+  ],
+  "summary": "The implementation uses `extend` when `value` is a list, directly contradicting the issue's explicit requirement that `append('tags', ['a', 'b'])` should add a nested list (like Python's `list.append`), not flatten it (like `list.extend`). My probe confirms: `append('tags', ['a', 'b'])` on `['bug']` produces `['bug', 'a', 'b']` instead of `['bug', ['a', 'b']]`. The PR's tests never pass a list as the value, so they miss this bug entirely.",
+  "verdict": "changes_requested",
+  "dropped_findings": [],
+  "verification": {
+    "original_verdict": "changes_requested",
+    "counts": {
+      "confirmed": 0,
+      "plausible": 0,
+      "rejected": 0,
+      "unverified": 2
+    },
+    "cost_usd": 0.0
+  }
+}
