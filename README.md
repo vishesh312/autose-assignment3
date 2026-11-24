@@ -151,14 +151,16 @@ What exists and has been checked:
 
 - Design (DESIGN.md, 13 ADRs, component/sequence/state-machine views, stage map), committed before the agent code.
 - Orchestrator, prompts, schemas and the three workflows.
-- **Offline test suite: 76 passed** (FakeRunner end-to-end plus unit tests; no model or GitHub calls).
+- **Offline test suite: 96 passed.** It covers a FakeRunner end-to-end run, unit tests, and hardening regression tests for the 19 findings of an independent code review. It makes no model or GitHub calls.
+- **Fork set up and protected.** The fork `main` is `b18cfe1`: `edff96a`, plus `ARCHITECTURE.md`, plus `.autose/` and the workflows. `main` is protected (PR required, admins included), and the first sync after protection went through PR [#6](https://github.com/vishesh312/tinydb/pull/6). Actions is enabled, and the lean `ci.yml` passes ([run](https://github.com/vishesh312/tinydb/actions/runs/45340122654)).
+- **Seeded PRs opened.** They are [#7–#11](https://github.com/vishesh312/tinydb/pulls?q=label%3Aseeded), labelled `seeded`, and have not been reviewed yet.
 - The 5 issue texts, hidden tests and reference fixes. The hidden tests were validated locally: they fail on base and pass with the reference fixes (19/19), and the existing 228-test suite still passes.
 - The 5 seeded PRs, validated locally: each applies cleanly and passes the existing suite, mypy and its own tests, and each defect is exposed by the hidden tests or the fails-on-base check as intended.
 
 What has **not** been run yet:
 
 - **No live runs and no model calls.** Neither the workflow on GitHub nor the local E1/E2 experiments have been run, and no canary either. Token and cost totals are therefore zero so far.
-- The seeded PRs have not been opened on the fork yet (`open_seeded_prs.sh` has not been run).
+- The `ANTHROPIC_API_KEY` secret is not set yet, so the canary, the pipeline runs and the reviews cannot run.
 - [`results/`](results/), the report's result sections and the demo video are scaffolding, marked `TBD(run)`. Every number there will come from a real, linked run (see the honesty rule in [`results/runs.md`](results/runs.md)).
 
 ## AI use
