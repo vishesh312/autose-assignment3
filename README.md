@@ -160,10 +160,16 @@ What exists and has been checked:
 Live runs:
 
 - [`results/runs.md`](results/runs.md) is the authoritative list of every live run (canary, pipeline, E1, E2), with links. A run that is not listed there has not happened, and no number in this repository comes from anywhere else.
-- Still open for the student: the demo video and the AI-use statement. All results are filled from real, linked runs (`results/runs.md`).
+- Still open for the student: the demo video. All results are filled from real, linked runs (`results/runs.md`).
 
 ## AI use
 
-> **TODO (student): confirm or rewrite this statement in your own words before submitting.** The course requires the ADR reasoning to be your own. State precisely which decisions you made, what you changed in the AI drafts, and how you reviewed them.
+I used a coding agent (Claude Code) substantially in this assignment. This is how the work was divided.
 
-Coding agents (Claude Code) were used substantially in this assignment, under the student's direction. They drafted the orchestrator code and tests, the GitHub workflows, the agent prompts, the Mermaid diagrams, the text of the ADRs and DESIGN.md, and the experiment material (issue texts, hidden tests, reference patches, seeded PRs and their friendly-context artifacts), as well as this README and the report skeleton. The student set the design direction and the decisions, and reviewed all generated material. Model usage *by the workflow itself* (Codex on a ChatGPT subscription, ADR-014) is reported separately in [`results/tokens.md`](results/tokens.md).
+- **Design decisions.** For each decision area (stage boundaries, checks, agent roles, models, reviewer independence, routing, budgets, security, harness), I asked the agent for options. It proposed several design options, each with its rationale and trade-offs. I compared them and chose the option that seemed most appropriate for this project. The ADRs record the options considered and why the chosen one won.
+- **My own design work and review.** I worked on the design myself. I reviewed the design document (`architecture/DESIGN.md`, the views and the ADRs) and the requirements documents (the spec and design schemas, the stage checks, and the issue texts with their expected behaviour), and had them revised where they did not match what I wanted.
+- **Claude Ship features.** Partway through, I proposed adopting ideas from Anthropic's Claude Ship. The agent then adapted them into the pipeline: the Find → Verify review pass, the important / pre_existing / nit severities, and maintainer review rules read only from the base branch (ADR-015). I also decided to run the agents on my existing Codex and Antigravity subscriptions instead of a paid API (ADR-014), and later to switch to smaller models to save quota.
+- **What the agent produced.** Under my direction, the coding agent wrote the orchestrator code and its tests, the GitHub workflows, the agent prompts, the diagrams, the text of the ADRs, DESIGN.md, this README and the report, and the experiment material (issue texts, hidden tests, reference patches and seeded PRs). It also ran the local experiments and triggered the GitHub runs I asked for.
+- **Review.** I reviewed the generated material. The coding agent was also used for a separate second-pass review of the code and documents, and the defects it found are recorded in the ADRs and `results/runs.md`.
+
+All runs, PRs and results are real and linked from `results/runs.md`. Model usage by the workflow itself (Codex on a ChatGPT subscription, with Antigravity for some local runs; ADR-014) is reported separately in [`results/tokens.md`](results/tokens.md).

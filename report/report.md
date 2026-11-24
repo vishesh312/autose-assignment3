@@ -260,4 +260,12 @@ All prompts are in `workflow/prompts/` (index: `workflow/prompts/README.md`); sy
 
 # Appendix D. AI use
 
-> **TODO (student): write this statement yourself before submitting.** State which parts were drafted or built with AI coding agents, which decisions and ADR reasoning are your own, what you changed in the AI drafts, and how you reviewed them. The same statement is due in `README.md` (section "AI use").
+I used a coding agent (Claude Code) substantially in this assignment (the same statement is in `README.md`). This is how the work was divided.
+
+- **Design decisions.** For each decision area (stage boundaries, checks, agent roles, models, reviewer independence, routing, budgets, security, harness), I asked the agent for options. It proposed several design options, each with its rationale and trade-offs. I compared them and chose the option that seemed most appropriate for this project. The ADRs record the options considered and why the chosen one won.
+- **My own design work and review.** I worked on the design myself. I reviewed the design document (`architecture/DESIGN.md`, the views and the ADRs) and the requirements documents (the spec and design schemas, the stage checks, and the issue texts with their expected behaviour), and had them revised where they did not match what I wanted.
+- **Claude Ship features.** Partway through, I proposed adopting ideas from Anthropic's Claude Ship. The agent then adapted them into the pipeline: the Find → Verify review pass, the important / pre_existing / nit severities, and maintainer review rules read only from the base branch (ADR-015). I also decided to run the agents on my existing Codex and Antigravity subscriptions instead of a paid API (ADR-014), and later to switch to smaller models to save quota.
+- **What the agent produced.** Under my direction, the coding agent wrote the orchestrator code and its tests, the GitHub workflows, the agent prompts, the diagrams, the text of the ADRs, DESIGN.md, this README and the report, and the experiment material (issue texts, hidden tests, reference patches and seeded PRs). It also ran the local experiments and triggered the GitHub runs I asked for.
+- **Review.** I reviewed the generated material. The coding agent was also used for a separate second-pass review of the code and documents, and the defects it found are recorded in the ADRs and `results/runs.md`.
+
+All runs, PRs and results are real and linked from `results/runs.md`. Model usage by the workflow itself (Codex on a ChatGPT subscription, with Antigravity for some local runs; ADR-014) is reported separately in [`results/tokens.md`](results/tokens.md).
