@@ -235,6 +235,7 @@ print(json.dumps({{"subtype": "success", "structured_output": {{"answer": "4"}},
 """)
     stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
     monkeypatch.setenv("AUTOSE_CLAUDE", str(stub))
+    monkeypatch.setenv("AUTOSE_BACKEND", "claude")
     assert cli.main(["--home", str(tmp_path / "home"), "canary"]) == 0
     calls = [json.loads(line) for line in log.read_text().splitlines()]
     assert len(calls) == 2

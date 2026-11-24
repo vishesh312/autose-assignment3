@@ -89,6 +89,7 @@ class RoleConfig:
     schema: str = ""
     prompt: str = ""
     extra_args: list[str] = field(default_factory=list)
+    backend: str = ""   # claude | codex | agy (ADR-014); filled in by role()
 
 
 SONNET = "claude-sonnet-5-5"
@@ -129,6 +130,30 @@ _ROLES: dict[str, RoleConfig] = {
 }
 
 
+#: ADR-014: the agent harness is chosen per role. ``codex`` (ChatGPT subscription) is the default.
+#: Override globally with ``AUTOSE_BACKEND`` or per role with ``AUTOSE_BACKEND_<ROLE>``.
+BACKENDS = ("claude", "codex", "agy")
+DEFAULT_BACKEND = "codex"
+BUILDER_GPT = "gpt-6.1-sol"     # builders: the strongest Codex model on the subscription
+SMALL_GPT = "gpt-6-luna"        # judge: small and fast
+REVIEW_GPT = "gpt-6-astra"      # reviewer/verifier: a *different* model from the builders (ADR-008)
+#: Default model per backend and role. ``claude`` keeps the original §7 table.
+BACKEND_MODELS: dict[str, dict[str, str]] = {
+    # First live run (2026-11-24): gpt-6-luna as judge failed a testable spec twice on test-layout
+    # nitpicks, so the judge uses the builder model at low effort (results/runs.md, ADR-014 note).
+    "codex": {"judge": BUILDER_GPT, "reviewer": REVIEW_GPT, "verifier": REVIEW_GPT, "*": BUILDER_GPT},
+    "agy": {"judge": "gemini-3.8-flash-low", "reviewer": "claude-opus-4-6-thinking",
+            "verifier": "claude-opus-4-6-thinking", "*": "gemini-3.8-flash-high"},
+}
+
+
+def backend_for(name: str) -> str:
+    b = os.environ.get(f"AUTOSE_BACKEND_{name.upper()}") or os.environ.get("AUTOSE_BACKEND") or DEFAULT_BACKEND
+    if b not in BACKENDS:
+        raise ValueError(f"unknown backend {b!r} for role {name} (expected one of {BACKENDS})")
+    return b
+
+
 def role(name: str) -> RoleConfig:
     """Return the role config with ``AUTOSE_<FIELD>_<ROLE>`` environment overrides applied."""
     base = _ROLES[name]
@@ -138,10 +163,14 @@ def role(name: str) -> RoleConfig:
         # Empty values count as unset: Actions passes `${{ vars.X }}` as "" when X is undefined.
         return os.environ.get(f"AUTOSE_{field_name}_{key}") or str(default)
 
+    backend = backend_for(name)
+    table = BACKEND_MODELS.get(backend)
+    default_model = (table.get(name) or table["*"]) if table else base.model
     return replace(
         base,
+        backend=backend,
         prompt=base.prompt or name,
-        model=env("MODEL", base.model),
+        model=env("MODEL", default_model),
         effort=env("EFFORT", base.effort),
         budget_usd=float(env("BUDGET", base.budget_usd)),
         max_turns=int(env("MAX_TURNS", base.max_turns)),

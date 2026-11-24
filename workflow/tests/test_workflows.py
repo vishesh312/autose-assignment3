@@ -45,13 +45,17 @@ def test_review_job_is_isolated() -> None:
 
 def test_secrets_only_in_agent_steps_and_cli_pinned() -> None:
     text = (WF / "autose.yml").read_text() + (WF / "autose-round.yml").read_text()
-    assert "claude-code@2.1.331" in text and "npm install -g @anthropic-ai/claude-code\n" not in text
+    assert "@openai/codex@0.172.0" in text and "npm install -g @openai/codex\n" not in text
+    assert "ANTHROPIC_API_KEY" not in text
     for name in ("autose.yml", "autose-round.yml"):
         for job_name, job in load(name)["jobs"].items():
-            assert "ANTHROPIC_API_KEY" not in str(job.get("env", {})), job_name
+            assert "CODEX_AUTH_JSON" not in str(job.get("env", {})), job_name
             for s in job.get("steps", []):
-                if "ANTHROPIC_API_KEY" in str(s.get("env", {})):
-                    assert "python -m autose" in s["run"], (job_name, s.get("name"))
+                env = str(s.get("env", {}))
+                if "secrets.CODEX_AUTH_JSON }}" in env:  # the value itself, not the `!= ''` presence flag
+                    # the credential only reaches tokenless agent/canary steps (ADR-005, ADR-014)
+                    assert "GH_TOKEN" not in env and "GITHUB_TOKEN" not in env, (job_name, s.get("name"))
+                    assert "codex-home" in s["run"], (job_name, s.get("name"))
 
 
 def test_concurrency_groups() -> None:

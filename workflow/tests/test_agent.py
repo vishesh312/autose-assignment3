@@ -79,6 +79,7 @@ def test_claude_runner_argv_env_and_nonzero_exit(tmp_path: Path, monkeypatch: py
     monkeypatch.setenv("AUTOSE_SANDBOX", "1")
     for k in ("GITHUB_ENV", "GITHUB_OUTPUT", "GITHUB_PATH", "GITHUB_STEP_SUMMARY"):
         monkeypatch.setenv(k, "/tmp/x")
+    monkeypatch.setenv("AUTOSE_BACKEND", "claude")  # legacy Claude Code backend (ADR-011, kept selectable)
     stub = _stub(tmp_path, {"is_error": True, "subtype": "error_max_turns", "structured_output": {"a": 3},
                             "total_cost_usd": 0.2}, code=1)
     role = config.role("reviewer")
@@ -133,8 +134,23 @@ def test_missing_cost_is_charged_at_the_cap(tmp_path: Path) -> None:
 
 
 def test_role_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTOSE_BACKEND", "claude")
     monkeypatch.setenv("AUTOSE_MODEL_REVIEWER", "claude-sonnet-5-5")
     monkeypatch.setenv("AUTOSE_BUDGET_REVIEWER", "3")
     r = config.role("reviewer")
     assert r.model == "claude-sonnet-5-5" and r.budget_usd == 3.0
     assert os.environ.get("AUTOSE_MODEL_DEVELOPER") is None and config.role("developer").model == config.SONNET
+
+
+def test_default_backend_is_codex_with_independent_reviewer_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    for k in [k for k in os.environ if k.startswith("AUTOSE_BACKEND") or k.startswith("AUTOSE_MODEL_")]:
+        monkeypatch.delenv(k)
+    dev, rev, judge = config.role("developer"), config.role("reviewer"), config.role("judge")
+    assert dev.backend == rev.backend == "codex"
+    assert rev.model != dev.model and judge.model == config.BUILDER_GPT and judge.effort == "low"  # ADR-008: reviewer differs from builders
+    assert config.role("reviewer_friendly").model == dev.model         # E1 variant B shares the builder model
+    monkeypatch.setenv("AUTOSE_BACKEND_REVIEWER", "agy")
+    assert config.role("reviewer").model == "claude-opus-4-6-thinking"
+    monkeypatch.setenv("AUTOSE_BACKEND", "bogus")
+    with pytest.raises(ValueError):
+        config.role("developer")
