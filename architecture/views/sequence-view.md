@@ -30,14 +30,14 @@ sequenceDiagram
   G->>GH: create status comment (queued)
   G->>B: needs: gate, canonical issue N
 
+  B->>GH: prepare step (token): issue, write-access comments, branch facts to files
+  Note over B: agent step: NO token, S1-S4 offline, every agent claude -p --bare --restricted --strict-mcp-config
   Note over B: S1 Requirements
-  B->>GH: gh issue view N (title, body, write-access comments)
   B->>AN: fenced issue text + A1 skill
   AN-->>B: spec.json
   B->>J: acceptance criteria only
   J-->>B: judge.json (all testable)
   Note over B: schema, AC shape, judge, no blocking question: PASS
-  B->>GH: update status comment
 
   Note over B: S2 Design
   B->>AR: spec.md + ARCHITECTURE.md
@@ -60,12 +60,12 @@ sequenceDiagram
     Note over B: S3 check PASS, no-progress check (diff hash, failing set) OK
     Note over B: full suite PASS, AC coverage OK, new tests fail on base: S4 PASS
   end
-  B->>B: render test_report.md from pytest results, test_map.json, fails-on-base
+  B->>B: render test_report.md, local commit, upload artifacts autose-issueN-r1
 
-  Note over B: S5 Release (deterministic)
-  B->>GH: push autose/issue-N (force-with-lease), open PR, trace comment
-  B->>GH: upload artifacts autose-issueN-r1, update status comment
-  B->>C: needs: build (head SHA)
+  Note over B: publish step (token): S5 Release, deterministic
+  B->>B: final path gate: git diff --name-only --no-renames base HEAD within allowlist: PASS
+  B->>GH: push autose/issue-N (force-with-lease), open PR, trace comment, labels, status
+  B->>C: needs: build (head SHA, spent_usd as a number)
   C->>GH: commit status success
   C->>R: needs: ci success
 
@@ -78,11 +78,14 @@ sequenceDiagram
 
   alt changes requested and send_backs below 2 (here: code finding, send-back 1)
     P->>B: verdict output, route = S3 (rework job, round 2)
+    B->>GH: prepare step (token): issue, comments, branch facts, download autose-issueN-review-r1
+    Note over B: agent step (no token): reservation check, spent + Developer + Tester caps + one Reviewer cap within 10 USD: OK
     B->>D: fresh context, code findings
     D-->>B: revised diff
     Note over B: S4 for a code finding: Tester not called, existing tests kept
     Note over B: suite + fails-on-base re-run PASS, test_report.md re-rendered
-    B->>GH: force-push, update PR body and trace comment
+    Note over B: publish step (token): final path gate PASS
+    B->>GH: force-push with lease, update PR body and trace comment
     B->>C: head SHA
     C->>GH: commit status success
     C->>R: needs: ci success
@@ -90,8 +93,10 @@ sequenceDiagram
     R->>R: agent step (no token) reviews again with own round-1 findings
     R->>P: upload autose-issueN-review-r2 (approve, checks_performed not empty)
     P->>GH: COMMENT review header APPROVE, label review-approved
-  else send_backs already 2
-    Note over P: review is final, no further routing
+  else send_backs already 2, or rework plus one Reviewer cap would exceed 10 USD
+    Note over P: last review stands, no further routing
+  else review still invalid after one re-ask
+    Note over P: posted under INVALID REVIEW (not an approval), no category to route on
   end
 
   P->>F: verdict
@@ -103,13 +108,14 @@ sequenceDiagram
 Notes on the planned run (routes follow DESIGN.md section 2.1):
 
 - Steps 3-5: the gate checks the sender through the collaborators API and creates the sticky status comment. Later steps edit it in place.
-- Steps 8-11: the Analyst sees the fenced issue; the Judge sees only the AC list. The orchestrator, not an agent, decides the S1 check.
+- Step 7: the build job's *prepare* step (token) writes the issue, trusted comments and branch facts to files. The *agent* step that follows has **no GitHub token**: the orchestrator runs S1-S4 offline and ends with a local commit. Every agent runs `claude -p --bare --restricted --strict-mcp-config`.
+- Steps 8-11: the Analyst sees the fenced issue (from the prepare step's files); the Judge sees only the AC list. The orchestrator, not an agent, decides the S1 check.
 - Developer retry loop: a suite failure goes back to S3 and uses one of the 3 Developer attempts for this design. Every attempt starts from a fresh context and receives only the failing test ids plus assertion output truncated to 4 KB. If the diff hash or the failing test set repeats, the orchestrator treats the attempts as exhausted and goes to the design revisit (if unused) or stops.
 - `test_report.md` is rendered by the orchestrator, not written by the Tester.
-- S5 Release is deterministic: no agent pushes or opens the PR. A failing push/PR call is retried once after 10 s; a CI failure stops the run with the CI log linked in `pr.md`.
-- Review job: fresh runner with read-only permissions. A prepare step (with the token) writes the issue text, trusted comments and `git diff base...head` to files; the agent step has no token and reads only those files, the PR head checkout and, from round 2, its own previous `review.json` (`autose-issueN-review-r1`). It never downloads the build artifacts.
-- Send-back: post-review emits `verdict` and the route. For a `code` finding the round-2 `rework` job re-enters at S3; S4 keeps the existing tests and only re-runs the suite and the fails-on-base check (an `approach` finding would instead go to S2 and the Tester would regenerate its tests; a `tests` finding would go to S4). Then S5, CI and review run again. After 2 send-backs the next review is final.
-- The verdict is posted as a `COMMENT` review (a `GITHUB_TOKEN`-opened PR cannot be approved by the same identity) with the verdict in its header and a verdict label. The bot never merges.
+- S5 Release is deterministic and runs in the *publish* step (token): the final path gate `git diff --name-only --no-renames <base> HEAD` must stay within the allowlist before anything is pushed, then push with lease, PR, trace comment, labels and status. No agent pushes or opens the PR. The build job passes its spend to the round as a plain number (`spent_usd`). A failing push/PR call is retried once after 10 s; a CI failure stops the run with the CI log linked in `pr.md`.
+- Review job: fresh runner with read-only permissions. A prepare step (with the token) writes the issue text, trusted comments and `git diff base...head` to files; the agent step has no token and reads only those files, the PR head checkout and, from round 2, its own previous `review.json` (`autose-issueN-review-r1`). It never downloads the build artifacts. It re-asks an invalid review only if `spent_usd` plus one Reviewer cap fits the $10 run cap; post-review discards a review whose SHA is no longer the PR head.
+- Send-back: post-review emits `verdict` and the route (only `blocking` findings route). The round-2 `rework` job has the same prepare / agent (no token) / publish split; its prepare step downloads the review that routed it, and its agent step first checks the reservation rule (the rework only starts if one Reviewer cap still fits under the run cap after it, otherwise the last review stands). For a `code` finding it re-enters at S3; S4 keeps the existing tests and only re-runs the suite and the fails-on-base check (an `approach` finding would instead go to S2 and the Tester would regenerate its tests; a `tests` finding would go to S4). Then S5, CI and review run again. After 2 send-backs the next review is final.
+- The verdict is posted as a `COMMENT` review (a `GITHUB_TOKEN`-opened PR cannot be approved by the same identity) with the verdict in its header and a verdict label. A review that is still invalid after one re-ask is posted under "INVALID REVIEW (not an approval)" and the run ends `awaiting-human`. The bot never merges.
 
 ## Real run (to be filled)
 

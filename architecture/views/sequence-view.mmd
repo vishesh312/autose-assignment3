@@ -21,14 +21,14 @@ sequenceDiagram
   G->>GH: create status comment (queued)
   G->>B: needs: gate, canonical issue N
 
+  B->>GH: prepare step (token): issue, write-access comments, branch facts to files
+  Note over B: agent step: NO token, S1-S4 offline, every agent claude -p --bare --restricted --strict-mcp-config
   Note over B: S1 Requirements
-  B->>GH: gh issue view N (title, body, write-access comments)
   B->>AN: fenced issue text + A1 skill
   AN-->>B: spec.json
   B->>J: acceptance criteria only
   J-->>B: judge.json (all testable)
   Note over B: schema, AC shape, judge, no blocking question: PASS
-  B->>GH: update status comment
 
   Note over B: S2 Design
   B->>AR: spec.md + ARCHITECTURE.md
@@ -51,12 +51,12 @@ sequenceDiagram
     Note over B: S3 check PASS, no-progress check (diff hash, failing set) OK
     Note over B: full suite PASS, AC coverage OK, new tests fail on base: S4 PASS
   end
-  B->>B: render test_report.md from pytest results, test_map.json, fails-on-base
+  B->>B: render test_report.md, local commit, upload artifacts autose-issueN-r1
 
-  Note over B: S5 Release (deterministic)
-  B->>GH: push autose/issue-N (force-with-lease), open PR, trace comment
-  B->>GH: upload artifacts autose-issueN-r1, update status comment
-  B->>C: needs: build (head SHA)
+  Note over B: publish step (token): S5 Release, deterministic
+  B->>B: final path gate: git diff --name-only --no-renames base HEAD within allowlist: PASS
+  B->>GH: push autose/issue-N (force-with-lease), open PR, trace comment, labels, status
+  B->>C: needs: build (head SHA, spent_usd as a number)
   C->>GH: commit status success
   C->>R: needs: ci success
 
@@ -69,11 +69,14 @@ sequenceDiagram
 
   alt changes requested and send_backs below 2 (here: code finding, send-back 1)
     P->>B: verdict output, route = S3 (rework job, round 2)
+    B->>GH: prepare step (token): issue, comments, branch facts, download autose-issueN-review-r1
+    Note over B: agent step (no token): reservation check, spent + Developer + Tester caps + one Reviewer cap within 10 USD: OK
     B->>D: fresh context, code findings
     D-->>B: revised diff
     Note over B: S4 for a code finding: Tester not called, existing tests kept
     Note over B: suite + fails-on-base re-run PASS, test_report.md re-rendered
-    B->>GH: force-push, update PR body and trace comment
+    Note over B: publish step (token): final path gate PASS
+    B->>GH: force-push with lease, update PR body and trace comment
     B->>C: head SHA
     C->>GH: commit status success
     C->>R: needs: ci success
@@ -81,8 +84,10 @@ sequenceDiagram
     R->>R: agent step (no token) reviews again with own round-1 findings
     R->>P: upload autose-issueN-review-r2 (approve, checks_performed not empty)
     P->>GH: COMMENT review header APPROVE, label review-approved
-  else send_backs already 2
-    Note over P: review is final, no further routing
+  else send_backs already 2, or rework plus one Reviewer cap would exceed 10 USD
+    Note over P: last review stands, no further routing
+  else review still invalid after one re-ask
+    Note over P: posted under INVALID REVIEW (not an approval), no category to route on
   end
 
   P->>F: verdict

@@ -1,12 +1,14 @@
 flowchart TD
-  start(["Gate passed"]) --> S1
+  start(["Gate passed, prepare step wrote inputs<br/>S1-S4 run in the agent step, no token"]) --> S1
 
   S1["S1 Requirements<br/>Analyst + Judge"]
   S2["S2 Design<br/>Architect"]
   S3["S3 Implementation<br/>Developer"]
   S4["S4 Testing<br/>Tester + full suite"]
-  ESC{"design revisit<br/>unused?<br/>(max 1)"}
-  S5["S5 Release<br/>deterministic: push, PR, trace"]
+  T4{"Tester attempts<br/>left? (max 2)"}
+  D3{"Developer attempts &lt; 3<br/>and progress made?"}
+  ESC{"design revisit<br/>unused? (max 1)"}
+  S5["S5 Release, publish step (token)<br/>deterministic: path gate, push, PR, trace"]
   CI["CI job<br/>reusable workflow"]
   S6["S6 Review<br/>Reviewer, separate job"]
   ROUTE{"send_backs &lt; 2 and<br/>rework + 1 review<br/>fits run cap?"}
@@ -25,31 +27,33 @@ flowchart TD
   S2 -->|check fail, 2 attempts used| FAIL
 
   S3 -->|builds| S4
-  S3 -->|check fail, Developer attempts &lt; 3:<br/>retry with check output| S3
-  S3 -->|3 Developer attempts used,<br/>or no progress| ESC
+  S3 -->|check fails| D3
 
   S4 -->|suite pass, every AC covered,<br/>at least 1 new test fails on base| S5
-  S4 -->|Tester check fail, Tester attempts &lt; 2:<br/>retry with checker output| S4
-  S4 -->|Tester check fail, 2 attempts used| FAIL
-  S4 -->|suite fails, Developer attempts &lt; 3:<br/>failing ids + output| S3
-  S4 -->|suite fails, 3 Developer attempts used,<br/>or no progress| ESC
+  S4 -->|Tester check<br/>fails| T4
+  T4 -->|yes, below 2:<br/>retry| S4
+  T4 -->|2 attempts used| FAIL
+  S4 -->|suite fails| D3
+  D3 -->|yes: retry with check output<br/>or failing ids + output| S3
+  D3 -->|no: attempts used up,<br/>or same diff hash / failing set| ESC
   ESC -->|yes: failure_summary.md,<br/>new design resets Dev/Tester counters| S2
   ESC -->|no| FAIL
 
   S5 -->|push / PR fails:<br/>retry once after 10 s| S5
   S5 -->|fails again| FAIL
+  S5 -->|final path gate: a committed path<br/>outside the allowlist| FAIL
   S5 -->|PR OPEN| CI
   CI -->|success| S6
   CI -->|failure: stop,<br/>CI log link in pr.md| FAIL
 
-  S6 -->|invalid review:<br/>re-ask once| S6
+  S6 -->|invalid review: re-ask once,<br/>if spent_usd + 2 USD fits| S6
   S6 -->|approve| HUMAN
   S6 -->|changes_requested<br/>with blocking findings| ROUTE
-  S6 -->|invalid twice:<br/>no category to route| HUMAN
+  S6 -->|still invalid: posted as<br/>INVALID REVIEW, not an approval| HUMAN
   ROUTE -->|yes, approach: new design,<br/>Tester regenerates tests,<br/>design revisit not used| S2
   ROUTE -->|yes, code: tests kept,<br/>suite + fails-on-base re-run| S3
   ROUTE -->|yes, tests: Tester<br/>revises its file| S4
-  ROUTE -->|no: final review posted| HUMAN
+  ROUTE -->|no: last review stands| HUMAN
 
   BUDGET["Any stage: 10 USD run cap<br/>or job timeout reached"] -.-> FAIL
 
@@ -60,4 +64,4 @@ flowchart TD
   class NI,FAIL stop
   class HUMAN human
   class S1,S2,S3,S4,S6 stage
-  class S5,CI,ESC,ROUTE,BUDGET det
+  class S5,CI,ESC,ROUTE,BUDGET,T4,D3 det
