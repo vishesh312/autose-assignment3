@@ -25,3 +25,6 @@
 <previous_findings>
 {{PREVIOUS_FINDINGS}}
 </previous_findings>
+<maintainer_review_rules>
+{{REVIEW_RULES}}
+</maintainer_review_rules>

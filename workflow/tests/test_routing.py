@@ -54,12 +54,20 @@ def test_no_progress() -> None:
 
 
 def test_rework_reservation() -> None:
-    # S3 rework: developer 1.50 + tester 1.00 + review reserve (one reviewer cap 2.00) = 4.50 under $10
-    assert pipeline.rework_affordable(5.5, "S3") == (True, 4.5)
-    assert not pipeline.rework_affordable(5.6, "S3")[0]
-    # S2 rework adds the architect (0.75): 5.25, so the first approach send-back fits after a typical $2.85 run
-    assert pipeline.rework_affordable(4.75, "S2")[0] and not pipeline.rework_affordable(4.8, "S2")[0]
+    # ADR-015: the review reserve is one reviewer cap (2.00) + one verifier cap (0.50) = 2.50.
+    assert config.review_reserve() == 2.5
+    # S3 rework: developer 1.50 + tester 1.00 + review reserve 2.50 = 5.00 under $10
+    assert pipeline.rework_affordable(5.0, "S3") == (True, 5.0)
+    assert not pipeline.rework_affordable(5.1, "S3")[0]
+    # S2 rework adds the architect (0.75): 5.75, so the first approach send-back still fits after a
+    # typical $2.85 run (8.60 <= 10); the verifier cap costs every send-back $0.50 of headroom.
+    assert pipeline.rework_affordable(4.25, "S2")[0] and not pipeline.rework_affordable(4.3, "S2")[0]
     assert pipeline.rework_affordable(2.85, "S2")[0]
+
+
+def test_review_reserve_without_verification(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTOSE_VERIFY", "0")  # skipping verification gives the $0.50 back (pre-ADR-015 numbers)
+    assert config.review_reserve() == 2.0 and pipeline.rework_affordable(5.5, "S3") == (True, 4.5)
 
 
 def _rv(name: str) -> dict[str, Any]:

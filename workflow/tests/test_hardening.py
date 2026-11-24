@@ -25,7 +25,7 @@ def _issue(fx: Path) -> pipeline.IssueInput:
 def test_build_never_spends_the_review_reserve(tinydb_repo: Path, pop_fixture: Path, tmp_path: Path) -> None:
     p = pipeline.Pipeline(_issue(pop_fixture), tinydb_repo, tmp_path / "home", FakeRunner(pop_fixture), "python",
                           reserve_usd=config.review_reserve())
-    p.state.cost_usd = 10.0 - 2.0 - 0.75 + 0.01  # one cent too much for the Analyst under the $2 reserve
+    p.state.cost_usd = 10.0 - 2.5 - 0.75 + 0.01  # one cent too much for the Analyst under the $2.50 reserve
     with pytest.raises(pipeline.Stop, match="review reserve"):
         p.requirements()
     assert "## Stop reason" in (p.dir / "spec.md").read_text()

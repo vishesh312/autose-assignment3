@@ -121,6 +121,8 @@ _ROLES: dict[str, RoleConfig] = {
     # E1 variant B: same tools, same schema, builder model (experiment/variants.md).
     "reviewer_friendly": RoleConfig("reviewer_friendly", SONNET, "high", ["Read", "Grep", "Glob", "Write", "Bash"],
                                     READ_TOOLS + ["Write"], 2.00, 60, schema="review"),
+    # Find -> Verify (ADR-015): re-checks one blocking reviewer finding in a fresh, read-only context.
+    "verifier": RoleConfig("verifier", OPUS, "medium", READ_TOOLS, READ_TOOLS, 0.50, 25, schema="verify"),
     # E2 variant B: Developer + Tester in one context.
     "builder": RoleConfig("builder", SONNET, "high", WRITE_TOOLS, READ_TOOLS + ["Edit", "Write"] + _DEV_BASH,
                           2.50, 80, schema="builder"),
@@ -153,14 +155,22 @@ ROLE_NAMES = list(_ROLES)
 REWORK_ROLES = {"S2": ["architect", "developer", "tester"], "S3": ["developer", "tester"], "S4": ["tester"]}
 
 
-def review_reserve() -> float:
-    """Budget build/rework must leave untouched: one Reviewer cap (ADR-006 reservation rule).
+def verify_enabled() -> bool:
+    """The review verification pass (ADR-015) runs unless ``AUTOSE_VERIFY=0``."""
+    return (os.environ.get("AUTOSE_VERIFY") or "1").strip() != "0"
 
-    The invalid-review re-ask is *not* reserved: it runs only if it still fits under the run cap,
-    otherwise the review stays invalid and the run ends ``awaiting-human`` (ADR-013). Reserving it
-    too would make the first ``approach`` send-back unaffordable after a typical run ($2.85 + $7.25).
+
+def review_reserve() -> float:
+    """Budget build/rework must leave untouched: one Reviewer cap plus one Verifier cap (ADR-006, ADR-015).
+
+    The Verifier cap is included only while verification is enabled. Only one verifier call is
+    reserved; further ones (one per blocking finding) run only if they still fit under the run cap,
+    and a finding that could not be verified keeps blocking. The invalid-review re-ask is *not*
+    reserved either: it runs only if it still fits, otherwise the review stays invalid and the run
+    ends ``awaiting-human`` (ADR-013). Reserving it too would make the first ``approach`` send-back
+    unaffordable after a typical run ($2.85 + $7.75).
     """
-    return role("reviewer").budget_usd
+    return role("reviewer").budget_usd + (role("verifier").budget_usd if verify_enabled() else 0.0)
 
 
 #: Variables never passed to agents or to subprocesses the orchestrator runs on agent-written code

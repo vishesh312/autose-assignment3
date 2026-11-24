@@ -22,7 +22,7 @@ from .agent import AgentCall, ClaudeRunner, FakeRunner, Runner, run_agent
 from .github import STATUS_MARKER, TRACE_MARKER, GitHub, GitHubError, Issue, retry_once, run_url
 from .ledger import ledger_cost
 from .pipeline import IssueInput, Pipeline, Stop, rework_affordable
-from .review import ReviewInput, decide_post, load_input, run_review
+from .review import ReviewInput, base_review_rules, decide_post, load_input, run_review
 
 # --------------------------------------------------------------------------- utilities
 
@@ -374,6 +374,9 @@ def cmd_review(a: argparse.Namespace) -> int:
                                                        "maintainer_comments": issue.maintainer_comments}, indent=2))
         (in_dir / "pr.json").write_text(json.dumps({"number": a.pr, "base_sha": base, "head_sha": head}, indent=2))
         (in_dir / "diff.patch").write_text(checks.git(repo, "diff", "--no-renames", f"{base}...HEAD"))
+        rules = base_review_rules(repo, base)  # from the BASE commit, never the PR head (ADR-015)
+        if rules:
+            (in_dir / "review_rules.md").write_text(rules + "\n")
         return 0
     refuse_token("the reviewer")
     inp = load_input(in_dir, Path(a.previous_review) if a.previous_review else None, a.round)
@@ -496,7 +499,8 @@ def cmd_review_local(a: argparse.Namespace) -> int:
             friendly = {"SPEC_MD": read("spec.md"), "DESIGN_MD": read("design.md"),
                         "DEV_NOTES": read("dev_notes.json"), "TEST_REPORT": read("test_report.md")}
         inp = ReviewInput(issue.number, issue.title, issue.body, issue.maintainer_comments,
-                          diff_file.read_text(), base, head, a.round, None, friendly)
+                          diff_file.read_text(), base, head, a.round, None, friendly,
+                          review_rules=base_review_rules(repo, base))
         out = _home(a) / "review-local" / f"{pr_dir.name}-{a.variant}"
         meta = run_review(inp, wt, out, make_runner(a.fake), tmp / "probes", variant=a.variant,
                           path_prefix=path_prefix(a.python))

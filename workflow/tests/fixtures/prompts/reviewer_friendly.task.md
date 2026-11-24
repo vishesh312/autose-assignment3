@@ -37,3 +37,6 @@
 <test_report>
 {{TEST_REPORT}}
 </test_report>
+<maintainer_review_rules>
+{{REVIEW_RULES}}
+</maintainer_review_rules>
