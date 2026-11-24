@@ -60,7 +60,7 @@ for n, run, pr, stage, passes, verdict, hp, ht, has_b, has_r, note in ci2:
     t["wall_s"] = round(t["wall_s"]); t["cost_usd"] = round(t["cost_usd"], 4)
     full = passes == "1/1/1/1/1"
     rows.append(dict(experiment="pipeline", variant="github-codex-terra-luna", item=f"issue-{n}", run_url=f"{U}/actions/runs/{run}",
-                     pr_url=f"{U}/pull/{pr}" if pr else "", stage_reached=stage, s1_pass=p[0] if full else ("0" if stage == "S1" else ""),
+                     pr_url=f"{U}/pull/{pr}" if pr else "", stage_reached=stage, s1_pass=p[0] if full else ("1" if stage == "S1" else ""),
                      s2_pass=p[1], s3_pass=p[2], s4_pass=p[3], s5_pass=p[4], s6_verdict=verdict, review_rounds=1 if has_r else 0,
                      hidden_pass=hp, hidden_total=ht if hp != "" else "", attempts_dev=1 if full else "", attempts_test=1 if full else "",
                      notes=note, **t))
