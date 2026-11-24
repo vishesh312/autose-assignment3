@@ -9,7 +9,7 @@ A GitHub Actions workflow in which agents turn a labelled issue on a tinydb fork
 | Fork `main` | the pinned upstream commit plus our setup commits: A2 `ARCHITECTURE.md`, `.autose/` (agent code and prompts, synced from `workflow/`) and `.github/workflows/`. Fork `main` head used for the first GitHub runs (13:39–13:47 UTC): `eec31b7`; for the runs after the quota reset (15:54–16:08 UTC, ADR-014 note 2 models): `0f00733` (sync PR #19), which is the current head (infrastructure syncs in between: PRs #13, #17, #18) |
 | Experiment issues | [#1](https://github.com/vishesh312/tinydb/issues/1) bug, [#2](https://github.com/vishesh312/tinydb/issues/2) bug, [#3](https://github.com/vishesh312/tinydb/issues/3) feature, [#4](https://github.com/vishesh312/tinydb/issues/4) feature, [#5](https://github.com/vishesh312/tinydb/issues/5) vague. Texts are in [`experiment/issues/`](experiment/issues/) |
 | Report | [`report.pdf`](report.pdf), built from [`report/report.md`](report/report.md) (8-page body + appendices; build command at the top of `report/report.md`) |
-| Demo video | _link to be added_ |
+| Demo video | [Google Drive](https://drive.google.com/file/d/1RE0xLMKGwbX8rYQP0yoJue4KYgXR2u7d/view?usp=sharing) |
 
 ## Architecture in one paragraph
 
