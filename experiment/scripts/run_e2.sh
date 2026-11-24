@@ -18,4 +18,4 @@ for n in $ISSUES; do
   done
 done
 wait
-echo "E2 runs done: $OUT (score with score_e2.sh)"
+echo "E2 runs done: $OUT (score each worktree with experiment/scripts/score.py)"
