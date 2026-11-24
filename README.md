@@ -24,7 +24,7 @@ report/report.md                  report source (8 pages + appendices)
 demo video                        link in the table above
 architecture/
   DESIGN.md                       whole design in one place (summary of the ADRs)
-  views/                          component view, sequence view, stage map (+ state machine)
+  views/                          overview, component view, sequence view, stage map (+ state machine)
   decisions/                      ADR-001 … ADR-015 + README.md index (ADR-011 superseded by ADR-014)
 workflow/                         agent code, prompts, skill, copies of the GitHub workflows
 experiment/
@@ -40,6 +40,7 @@ results/
 
 | Deliverable | Link |
 |---|---|
+| Overview (one simple picture) | [`architecture/views/overview.png`](architecture/views/overview.png) (source `overview.mmd`) |
 | Component view | [`architecture/views/component-view.md`](architecture/views/component-view.md) ([png](architecture/views/component-view.png)) |
 | Sequence view | [`architecture/views/sequence-view.md`](architecture/views/sequence-view.md) ([png](architecture/views/sequence-view.png)). The real run for issue #1 (Actions run 45405751306, PR #14), including the quota-failed review and the `awaiting-human` fail-safe |
 | Stage map (agent, artifact and check per stage) | [`architecture/views/stage-map.md`](architecture/views/stage-map.md) |

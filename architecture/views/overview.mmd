@@ -1,0 +1,24 @@
+%% Simple one-picture overview (for presentations). Full detail: component-view, state-machine.
+flowchart TB
+    I["📝 GitHub issue<br/>maintainer comments /autose"]
+
+    subgraph A["Build: AI agents write files, plain Python checks every one"]
+        direction LR
+        S1["1 · Spec"] --> S2["2 · Design"] --> S3["3 · Code"] --> S4["4 · Tests"]
+    end
+
+    I --> A
+    A --> S5["5 · Open pull request + CI"]
+    S5 --> S6["6 · Independent review<br/>separate job, different model, no GitHub token"]
+    S6 --> H["👤 A human decides whether to merge"]
+
+    A -. "issue unclear" .-> Q["❓ Questions posted on the issue"]
+    S6 -. "changes needed (at most 2 times)" .-> A
+
+    classDef agent fill:#e8f0fe,stroke:#4a6fd1,color:#111
+    classDef rev fill:#fff1e0,stroke:#d9822b,color:#111
+    classDef ends fill:#eef7ee,stroke:#3a8f3a,color:#111
+    class S1,S2,S3,S4 agent
+    class S6 rev
+    class I,H,S5,Q ends
+    style A fill:#f7f9ff,stroke:#9aaad8
