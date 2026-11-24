@@ -146,3 +146,11 @@ def test_gate_on_pull_requests() -> None:
     out = comment(12, "/autose review")
     assert (out["mode"], out["issue"], out["pr"], out["head_sha"]) == ("review", "4", "12", "s")
     assert comment(12, "/autose")["proceed"] == "false"
+
+
+def test_invalid_review_without_output_is_still_posted() -> None:
+    """Regression (quota-exhausted reviews on PRs #14-#16 posted nothing): post an INVALID COMMENT."""
+    from autose.review import decide_post
+    meta = {"head_sha": "abc", "valid": False, "problems": ["usage limit"]}
+    d = decide_post(meta, None, final=False, ci_result="success", current_head="abc")
+    assert d.verdict == "awaiting-human" and d.post and d.route == ""
