@@ -47,8 +47,8 @@ flowchart TD
   CI -->|failure: stop,<br/>CI log link in pr.md| FAIL
 
   S6 -->|invalid review: re-ask once,<br/>if spent_usd + 2 USD fits| S6
-  S6 -->|approve| HUMAN
-  S6 -->|changes_requested<br/>with blocking findings| ROUTE
+  S6 -->|approve, or every important<br/>finding REJECTED by the Verifier| HUMAN
+  S6 -->|changes_requested: important findings<br/>that survive the Verifier| ROUTE
   S6 -->|still invalid: posted as<br/>INVALID REVIEW, not an approval| HUMAN
   ROUTE -->|yes, approach: new design,<br/>Tester regenerates tests,<br/>design revisit not used| S2
   ROUTE -->|yes, code: tests kept,<br/>suite + fails-on-base re-run| S3

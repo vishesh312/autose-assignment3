@@ -40,14 +40,15 @@ flowchart TB
       end
       subgraph JV["review job | contents:read, issues:read, pull-requests:read"]
         direction TB
-        prep["prepare step (token)<br/>writes issue text, trusted comments,<br/>git diff base...head to files"]
+        prep["prepare step (token)<br/>writes issue text, trusted comments,<br/>git diff base...head, base .autose/REVIEW.md to files"]
         subgraph JVA["agent step: NO-TOKEN BOUNDARY, persist-credentials:false"]
-          rcli["claude -p --bare --restricted<br/>--strict-mcp-config<br/>re-ask only if spent_usd + 2 USD fits"]
-          reviewer["Reviewer | Opus 5.5 | 2 USD<br/>Read, Grep, Glob, Write to probes dir<br/>Bash: pytest, python probe-dir/*, git diff/log/show"]
+          rcli["codex exec, Codex sandbox, no network<br/>no AGENTS.md, no user config, no MCP<br/>re-ask only if spent_usd + 2 USD fits"]
+          reviewer["Reviewer | gpt-6-astra | 2 USD<br/>workspace-write: checkout + probe dir<br/>runs pytest, probes, git read commands"]
+          verifier["Verifier | gpt-6-astra | 0.5 USD<br/>read-only, one call per important finding<br/>CONFIRMED / PLAUSIBLE / REJECTED"]
         end
       end
       subgraph JP["post-review job | pull-requests:write, issues:write"]
-        post["Validate review.json, discard stale SHA,<br/>route, count send-backs, post COMMENT review<br/>or INVALID REVIEW (not an approval)"]
+        post["Validate review.json, discard stale SHA,<br/>route on verified important findings,<br/>count send-backs, post COMMENT review<br/>or INVALID REVIEW (not an approval)"]
       end
     end
     subgraph JF["finalize job | issues:write, pull-requests:write"]
@@ -55,18 +56,18 @@ flowchart TB
     end
   end
 
-  subgraph AG["Builder agents: claude -p --bare --restricted --strict-mcp-config, fresh context per call, no MCP, no Web, no GitHub token"]
+  subgraph AG["Builder agents: codex exec, fresh context per call, Codex sandbox (network off), no MCP, no Web, no GitHub token"]
     direction LR
-    cli["claude CLI<br/>--json-schema, --max-budget-usd"]
-    analyst["Analyst | Sonnet 5.5 | 0.75 USD<br/>Read, Grep, Glob"]
-    judge["Judge | Haiku 5.5 | 0.05 USD<br/>no tools, single call"]
-    architect["Architect | Sonnet 5.5 | 0.75 USD<br/>Read, Grep, Glob"]
-    dev["Developer | Sonnet 5.5 | 1.50 USD<br/>Read, Grep, Glob, Edit, Write<br/>Bash: pytest, mypy, compileall, git diff/status"]
-    tester["Tester | Sonnet 5.5 | 1.00 USD<br/>Read, Grep, Glob, Edit, Write<br/>Bash: pytest"]
+    cli["codex CLI 0.172.0 (ChatGPT login)<br/>--output-schema, -s read-only / workspace-write"]
+    analyst["Analyst | gpt-6.1-sol | 0.75 USD<br/>read-only sandbox"]
+    judge["Judge | gpt-6.1-sol low | 0.05 USD<br/>no tools, single call"]
+    architect["Architect | gpt-6.1-sol | 0.75 USD<br/>read-only sandbox"]
+    dev["Developer | gpt-6.1-sol | 1.50 USD<br/>workspace-write, no network<br/>path gate: tinydb/** only"]
+    tester["Tester | gpt-6.1-sol | 1.00 USD<br/>workspace-write, no network<br/>path gate: own test file only"]
   end
 
   ghcli["gh CLI + git<br/>deterministic steps only<br/>GITHUB_TOKEN"]
-  anth(["Anthropic API"])
+  llm(["OpenAI models<br/>ChatGPT subscription"])
   art[("Workflow artifacts<br/>autose-issueN-rR<br/>spec, design, diff, test_report, ledger")]
   revart[("Review artifact<br/>autose-issueN-review-rK<br/>review.json")]
 
@@ -79,9 +80,10 @@ flowchart TB
   orch -->|subprocess| cli
   orchR -->|subprocess| cli
   cli --> analyst & judge & architect & dev & tester
-  cli -->|HTTPS| anth
+  cli -->|HTTPS| llm
   rcli --> reviewer
-  rcli -->|HTTPS| anth
+  rcli -->|each important finding| verifier
+  rcli -->|HTTPS| llm
 
   gate --> ghcli
   prepB --> ghcli
@@ -118,7 +120,7 @@ flowchart TB
   classDef store fill:#fffbe6,stroke:#b8860b
   classDef ext fill:#eaffea,stroke:#2e7d32
   class UNTRUSTED,JVA,JBA trust
-  class analyst,judge,architect,dev,tester,reviewer agent
+  class analyst,judge,architect,dev,tester,reviewer,verifier agent
   class gate,orch,orchR,ci,post,fin,ghcli,cli,rcli,prep,prepB,pubB det
   class branch,status,prdoc,prreview,art,revart store
-  class anth,rest ext
+  class llm,rest ext

@@ -22,7 +22,7 @@ sequenceDiagram
   G->>B: needs: gate, canonical issue N
 
   B->>GH: prepare step (token): issue, write-access comments, branch facts to files
-  Note over B: agent step: NO token, S1-S4 offline, every agent claude -p --bare --restricted --strict-mcp-config
+  Note over B: agent step: NO token, S1-S4 offline, every agent is codex exec in the Codex sandbox (network off)
   Note over B: S1 Requirements
   B->>AN: fenced issue text + A1 skill
   AN-->>B: spec.json
@@ -64,13 +64,14 @@ sequenceDiagram
   R->>GH: prepare step (token): issue text, trusted comments, git diff to files
   Note over R: agent step, no token in env
   R->>R: Reviewer reads files + PR head checkout, runs probes
+  R->>R: Verifier (fresh read-only call) re-checks the important code finding: CONFIRMED
   R->>P: upload autose-issueN-review-r1 (review.json)
   P->>GH: COMMENT review header REQUEST_CHANGES, label review-changes-requested
 
   alt changes requested and send_backs below 2 (here: code finding, send-back 1)
     P->>B: verdict output, route = S3 (rework job, round 2)
     B->>GH: prepare step (token): issue, comments, branch facts, download autose-issueN-review-r1
-    Note over B: agent step (no token): reservation check, spent + Developer + Tester caps + one Reviewer cap within 10 USD: OK
+    Note over B: agent step (no token): reservation check, spent + Developer + Tester caps + one Reviewer and one Verifier cap within 10 USD: OK
     B->>D: fresh context, code findings
     D-->>B: revised diff
     Note over B: S4 for a code finding: Tester not called, existing tests kept
@@ -84,7 +85,7 @@ sequenceDiagram
     R->>R: agent step (no token) reviews again with own round-1 findings
     R->>P: upload autose-issueN-review-r2 (approve, checks_performed not empty)
     P->>GH: COMMENT review header APPROVE, label review-approved
-  else send_backs already 2, or rework plus one Reviewer cap would exceed 10 USD
+  else send_backs already 2, or rework plus Reviewer and Verifier caps would exceed 10 USD
     Note over P: last review stands, no further routing
   else review still invalid after one re-ask
     Note over P: posted under INVALID REVIEW (not an approval), no category to route on

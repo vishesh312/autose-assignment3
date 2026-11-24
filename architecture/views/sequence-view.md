@@ -31,7 +31,7 @@ sequenceDiagram
   G->>B: needs: gate, canonical issue N
 
   B->>GH: prepare step (token): issue, write-access comments, branch facts to files
-  Note over B: agent step: NO token, S1-S4 offline, every agent claude -p --bare --restricted --strict-mcp-config
+  Note over B: agent step: NO token, S1-S4 offline, every agent is codex exec in the Codex sandbox (network off)
   Note over B: S1 Requirements
   B->>AN: fenced issue text + A1 skill
   AN-->>B: spec.json
@@ -73,13 +73,14 @@ sequenceDiagram
   R->>GH: prepare step (token): issue text, trusted comments, git diff to files
   Note over R: agent step, no token in env
   R->>R: Reviewer reads files + PR head checkout, runs probes
+  R->>R: Verifier (fresh read-only call) re-checks the important code finding: CONFIRMED
   R->>P: upload autose-issueN-review-r1 (review.json)
   P->>GH: COMMENT review header REQUEST_CHANGES, label review-changes-requested
 
   alt changes requested and send_backs below 2 (here: code finding, send-back 1)
     P->>B: verdict output, route = S3 (rework job, round 2)
     B->>GH: prepare step (token): issue, comments, branch facts, download autose-issueN-review-r1
-    Note over B: agent step (no token): reservation check, spent + Developer + Tester caps + one Reviewer cap within 10 USD: OK
+    Note over B: agent step (no token): reservation check, spent + Developer + Tester caps + one Reviewer and one Verifier cap within 10 USD: OK
     B->>D: fresh context, code findings
     D-->>B: revised diff
     Note over B: S4 for a code finding: Tester not called, existing tests kept
@@ -93,7 +94,7 @@ sequenceDiagram
     R->>R: agent step (no token) reviews again with own round-1 findings
     R->>P: upload autose-issueN-review-r2 (approve, checks_performed not empty)
     P->>GH: COMMENT review header APPROVE, label review-approved
-  else send_backs already 2, or rework plus one Reviewer cap would exceed 10 USD
+  else send_backs already 2, or rework plus Reviewer and Verifier caps would exceed 10 USD
     Note over P: last review stands, no further routing
   else review still invalid after one re-ask
     Note over P: posted under INVALID REVIEW (not an approval), no category to route on
@@ -108,13 +109,13 @@ sequenceDiagram
 Notes on the planned run (routes follow DESIGN.md section 2.1):
 
 - Steps 3-5: the gate checks the sender through the collaborators API and creates the sticky status comment. Later steps edit it in place.
-- Step 7: the build job's *prepare* step (token) writes the issue, trusted comments and branch facts to files. The *agent* step that follows has **no GitHub token**: the orchestrator runs S1-S4 offline and ends with a local commit. Every agent runs `claude -p --bare --restricted --strict-mcp-config`.
+- Step 7: the build job's *prepare* step (token) writes the issue, trusted comments and branch facts to files. The *agent* step that follows has **no GitHub token**: the orchestrator runs S1-S4 offline and ends with a local commit. Every agent runs as `codex exec` in the Codex sandbox with network off and no repo instructions or MCP loaded (ADR-014).
 - Steps 8-11: the Analyst sees the fenced issue (from the prepare step's files); the Judge sees only the AC list. The orchestrator, not an agent, decides the S1 check.
 - Developer retry loop: a suite failure goes back to S3 and uses one of the 3 Developer attempts for this design. Every attempt starts from a fresh context and receives only the failing test ids plus assertion output truncated to 4 KB. If the diff hash or the failing test set repeats, the orchestrator treats the attempts as exhausted and goes to the design revisit (if unused) or stops.
 - `test_report.md` is rendered by the orchestrator, not written by the Tester.
 - S5 Release is deterministic and runs in the *publish* step (token): the final path gate `git diff --name-only --no-renames <base> HEAD` must stay within the allowlist before anything is pushed, then push with lease, PR, trace comment, labels and status. No agent pushes or opens the PR. The build job passes its spend to the round as a plain number (`spent_usd`). A failing push/PR call is retried once after 10 s; a CI failure stops the run with the CI log linked in `pr.md`.
-- Review job: fresh runner with read-only permissions. A prepare step (with the token) writes the issue text, trusted comments and `git diff base...head` to files; the agent step has no token and reads only those files, the PR head checkout and, from round 2, its own previous `review.json` (`autose-issueN-review-r1`). It never downloads the build artifacts. It re-asks an invalid review only if `spent_usd` plus one Reviewer cap fits the $10 run cap; post-review discards a review whose SHA is no longer the PR head.
-- Send-back: post-review emits `verdict` and the route (only `blocking` findings route). The round-2 `rework` job has the same prepare / agent (no token) / publish split; its prepare step downloads the review that routed it, and its agent step first checks the reservation rule (the rework only starts if one Reviewer cap still fits under the run cap after it, otherwise the last review stands). For a `code` finding it re-enters at S3; S4 keeps the existing tests and only re-runs the suite and the fails-on-base check (an `approach` finding would instead go to S2 and the Tester would regenerate its tests; a `tests` finding would go to S4). Then S5, CI and review run again. After 2 send-backs the next review is final.
+- Review job: fresh runner with read-only permissions. A prepare step (with the token) writes the issue text, trusted comments and `git diff base...head` to files; the agent step has no token and reads only those files, the PR head checkout and, from round 2, its own previous `review.json` (`autose-issueN-review-r1`). It never downloads the build artifacts. After a valid review, each `important` finding is re-checked by a separate read-only Verifier call that sees only that finding, the issue, the diff and the code (ADR-015); a `REJECTED` finding is shown under "Dropped by verification" and does not route. It re-asks an invalid review only if `spent_usd` plus one Reviewer cap fits the $10 run cap; post-review discards a review whose SHA is no longer the PR head.
+- Send-back: post-review emits `verdict` and the route (only `important` findings that survived verification route). The round-2 `rework` job has the same prepare / agent (no token) / publish split; its prepare step downloads the review that routed it, and its agent step first checks the reservation rule (the rework only starts if one Reviewer cap plus one Verifier cap still fits under the run cap after it, otherwise the last review stands). For a `code` finding it re-enters at S3; S4 keeps the existing tests and only re-runs the suite and the fails-on-base check (an `approach` finding would instead go to S2 and the Tester would regenerate its tests; a `tests` finding would go to S4). Then S5, CI and review run again. After 2 send-backs the next review is final.
 - The verdict is posted as a `COMMENT` review (a `GITHUB_TOKEN`-opened PR cannot be approved by the same identity) with the verdict in its header and a verdict label. A review that is still invalid after one re-ask is posted under "INVALID REVIEW (not an approval)" and the run ends `awaiting-human`. The bot never merges.
 
 ## Real run (to be filled)
