@@ -3,95 +3,47 @@ sequenceDiagram
   actor M as Maintainer
   participant GH as GitHub
   participant G as gate job
-  participant B as build job (orchestrator)
-  participant AN as Analyst
-  participant J as Judge
-  participant AR as Architect
-  participant D as Developer
-  participant T as Tester
-  participant C as CI job
-  participant R as review job (Reviewer)
-  participant P as post-review
+  participant B as build job<br/>(orchestrator)
+  participant A as agents S1-S4<br/>(codex exec, gpt-6.1-sol)
+  participant C as round1/ci
+  participant R as round1/review<br/>(Reviewer gpt-6-astra)
+  participant P as round1/post
   participant F as finalize
 
-  M->>GH: add label autose to issue N
-  GH->>G: issues.labeled event
-  G->>GH: gh api collaborators permission of sender
-  GH-->>G: write
-  G->>GH: create status comment (queued)
-  G->>B: needs: gate, canonical issue N
-
-  B->>GH: prepare step (token): issue, write-access comments, branch facts to files
-  Note over B: agent step: NO token, S1-S4 offline, every agent is codex exec in the Codex sandbox (network off)
-  Note over B: S1 Requirements
-  B->>AN: fenced issue text + A1 skill
-  AN-->>B: spec.json
-  B->>J: acceptance criteria only
-  J-->>B: judge.json (all testable)
-  Note over B: schema, AC shape, judge, no blocking question: PASS
-
-  Note over B: S2 Design
-  B->>AR: spec.md + ARCHITECTURE.md
-  AR-->>B: design.json
-  Note over B: paths exist, AST symbols, AC coverage, allowlist: PASS
-
-  Note over B: S3 Implementation (attempt 1)
-  B->>D: design.md + spec.md
-  D-->>B: working tree edits + dev_notes.json
-  Note over B: allowlist, compileall, import, mypy: PASS
-
-  Note over B: S4 Testing
-  B->>T: ACs + Public API / test hooks section
-  T-->>B: tests/test_autose_issue_N.py + test_map.json
-  Note over B: full suite: 2 new tests FAIL
-
-  loop Developer retry (at most 3 attempts per design)
-    B->>D: fresh context, failing test ids + 4 KB assertion output
-    D-->>B: revised diff + dev_notes.json
-    Note over B: S3 check PASS, no-progress check (diff hash, failing set) OK
-    Note over B: full suite PASS, AC coverage OK, new tests fail on base: S4 PASS
-  end
-  B->>B: render test_report.md, local commit, upload artifacts autose-issueN-r1
-
-  Note over B: publish step (token): S5 Release, deterministic
-  B->>B: final path gate: git diff --name-only --no-renames base HEAD within allowlist: PASS
-  B->>GH: push autose/issue-N (force-with-lease), open PR, trace comment, labels, status
-  B->>C: needs: build (head SHA, spent_usd as a number)
-  C->>GH: commit status success
+  Note over M,F: REAL RUN 45405751306 (issue #35;1, PR #35;14), 2026-11-24, times UTC. The real path, not the happy path.
+  M->>GH: 13:39:50 label autose on issue #35;1
+  GH->>G: issues.labeled
+  G->>GH: 13:39:52-13:40:01 collaborators API: write,<br/>status comment created
+  G->>B: needs: gate
+  B->>GH: 13:40:21-25 prepare step (token):<br/>issue + trusted comments to files
+  Note over B,A: 13:40:25 agent step: NO GitHub token, Codex sandbox, network off
+  B->>A: S1 Analyst (fenced issue + A1 skill)
+  A-->>B: spec.json, 72.8 s
+  B->>A: S1 Judge (AC list only)
+  A-->>B: judge.json, 12.0 s
+  Note over B: 13:41:50 S1 PASS (attempt 1): all criteria testable
+  B->>A: S2 Architect (spec + ARCHITECTURE.md)
+  A-->>B: design.json, 59.7 s
+  Note over B: 13:42:50 S2 PASS (attempt 1): paths, AST symbols, AC coverage
+  B->>A: S3 Developer (spec + design)
+  A-->>B: diff + dev_notes.json, 36.9 s
+  Note over B: 13:43:27 S3 PASS (attempt 1): compileall, import, mypy
+  B->>A: S4 Tester (ACs + public API)
+  A-->>B: test_autose_issue_1.py + test_map.json, 57.9 s
+  Note over B: 13:44:27 S4 PASS (attempt 1): 10 new tests fail on base,<br/>full suite + mypy pass. Build: 5 calls, notional $0.61
+  B->>GH: 13:44:28-37 publish step (token): path gate, push,<br/>open PR #35;14 at 20f2112, trace comment
+  B->>C: needs: build
+  C->>GH: 13:44:45-13:45:05 pytest + mypy: autose-ci success
   C->>R: needs: ci success
-
-  Note over R: round 1, fresh runner, no build artifacts
-  R->>GH: prepare step (token): issue text, trusted comments, git diff to files
-  Note over R: agent step, no token in env
-  R->>R: Reviewer reads files + PR head checkout, runs probes
-  R->>R: Verifier (fresh read-only call) re-checks the important code finding: CONFIRMED
-  R->>P: upload autose-issueN-review-r1 (review.json)
-  P->>GH: COMMENT review header REQUEST_CHANGES, label review-changes-requested
-
-  alt changes requested and send_backs below 2 (here: code finding, send-back 1)
-    P->>B: verdict output, route = S3 (rework job, round 2)
-    B->>GH: prepare step (token): issue, comments, branch facts, download autose-issueN-review-r1
-    Note over B: agent step (no token): reservation check, spent + Developer + Tester caps + one Reviewer and one Verifier cap within 10 USD: OK
-    B->>D: fresh context, code findings
-    D-->>B: revised diff
-    Note over B: S4 for a code finding: Tester not called, existing tests kept
-    Note over B: suite + fails-on-base re-run PASS, test_report.md re-rendered
-    Note over B: publish step (token): final path gate PASS
-    B->>GH: force-push with lease, update PR body and trace comment
-    B->>C: head SHA
-    C->>GH: commit status success
-    C->>R: needs: ci success
-    R->>GH: prepare step: issue, comments, new diff to files, download autose-issueN-review-r1
-    R->>R: agent step (no token) reviews again with own round-1 findings
-    R->>P: upload autose-issueN-review-r2 (approve, checks_performed not empty)
-    P->>GH: COMMENT review header APPROVE, label review-approved
-  else send_backs already 2, or rework plus Reviewer and Verifier caps would exceed 10 USD
-    Note over P: last review stands, no further routing
-  else review still invalid after one re-ask
-    Note over P: posted under INVALID REVIEW (not an approval), no category to route on
-  end
-
-  P->>F: verdict
-  F->>GH: label autose:awaiting-human, final status comment
-  GH-->>M: notification: reviewed PR waiting
-  Note over M: human decides merge or close (bot never merges)
+  R->>GH: 13:45:29-31 prepare (token): issue, comments, diff to files
+  Note over R: 13:45:31 agent step: no token, fresh runner, no build artifacts
+  R->>R: Reviewer call 1 fails after 2.5 s:<br/>ChatGPT usage limit ("try again at 6:19 PM")
+  R->>R: 13:45:36 re-ask (call 2): same error
+  Note over R: valid=false, no review.json.<br/>review.md = INVALID REVIEW (not an approval)<br/>(artifact autose-issue1-review-r1)
+  R->>P: needs: review
+  P->>GH: 13:45:50-52 post-review: verdict awaiting-human, no route.<br/>Status comment updated. No PR review posted (nothing valid)
+  Note over P: round2 / round3 skipped by if: on verdict. No rework, no merge
+  P->>F: awaiting-human
+  F->>GH: 13:45:58-13:46:11 label autose:awaiting-human on issue,<br/>final status comment
+  GH-->>M: PR #35;14 open, CI green, not reviewed: human decides
+  Note over M,F: After the run: hidden tests on 20f2112 pass 4/4. S6 re-run locally (gemini-3.8-flash-high): approve.
