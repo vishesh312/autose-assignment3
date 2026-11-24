@@ -9,7 +9,7 @@ A GitHub Actions workflow in which agents turn a labelled issue on a tinydb fork
 | Fork `main` | the pinned upstream commit plus our setup commits: A2 `ARCHITECTURE.md`, `.autose/` (agent code and prompts, synced from `workflow/`) and `.github/workflows/`. Fork `main` head used for the first GitHub runs (13:39–13:47 UTC): `eec31b7`; for the runs after the quota reset (15:54–16:08 UTC, ADR-014 note 2 models): `0f00733` (sync PR #19), which is the current head (infrastructure syncs in between: PRs #13, #17, #18) |
 | Experiment issues | [#1](https://github.com/vishesh312/tinydb/issues/1) bug, [#2](https://github.com/vishesh312/tinydb/issues/2) bug, [#3](https://github.com/vishesh312/tinydb/issues/3) feature, [#4](https://github.com/vishesh312/tinydb/issues/4) feature, [#5](https://github.com/vishesh312/tinydb/issues/5) vague. Texts are in [`experiment/issues/`](experiment/issues/) |
 | Report | [`report.pdf`](report.pdf), built from [`report/report.md`](report/report.md) (8-page body + appendices; build command at the top of `report/report.md`) |
-| Demo video | TODO (student): record from [`demo-script.md`](demo-script.md) and link here |
+| Demo video | _link to be added_ |
 
 ## Architecture in one paragraph
 
@@ -21,7 +21,7 @@ A Python orchestrator (`autose`) runs a **deterministic state machine** through 
 README.md                         this file
 report.pdf                        generated from report/report.md
 report/report.md                  report source (8 pages + appendices)
-demo.mp4 / link                   TODO (student): see the table above
+demo video                        link in the table above
 architecture/
   DESIGN.md                       whole design in one place (summary of the ADRs)
   views/                          component view, sequence view, stage map (+ state machine)
@@ -160,7 +160,7 @@ What exists and has been checked:
 Live runs:
 
 - [`results/runs.md`](results/runs.md) is the authoritative list of every live run (canary, pipeline, E1, E2), with links. A run that is not listed there has not happened, and no number in this repository comes from anywhere else.
-- Still open for the student: the demo video. All results are filled from real, linked runs (`results/runs.md`).
+- All results are filled from real, linked runs (`results/runs.md`).
 
 ## AI use
 

@@ -18,8 +18,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 #: A clean tinydb @ edff96a with a venv (override with AUTOSE_TEST_TINYDB).
 TINYDB_SRC = Path(os.environ.get(
     "AUTOSE_TEST_TINYDB",
-    "/private/tmp/claude-501/-Users-vishesh-College-4-1-ASE-autose-assignment3/"
-    "51dce3d2-cbe4-40aa-b3ed-2007c29ee1d2/scratchpad/tinydb-up"))
+    str(WORKFLOW.parent / ".tinydb-up")))
 
 
 @pytest.fixture(autouse=True)
