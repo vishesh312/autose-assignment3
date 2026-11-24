@@ -8,7 +8,7 @@ A GitHub Actions workflow in which agents turn a labelled issue on a tinydb fork
 | Upstream | https://github.com/msiemens/tinydb, pinned at commit **`edff96aeb2616402e9489d46e90a592c05565621`** (tinydb 4.9.0) |
 | Fork `main` | the pinned upstream commit plus our setup commits: A2 `ARCHITECTURE.md`, `.autose/` (agent code and prompts, synced from `workflow/`) and `.github/workflows/`. Fork `main` head used for the runs: `TBD(run)` |
 | Experiment issues | [#1](https://github.com/vishesh312/tinydb/issues/1) bug, [#2](https://github.com/vishesh312/tinydb/issues/2) bug, [#3](https://github.com/vishesh312/tinydb/issues/3) feature, [#4](https://github.com/vishesh312/tinydb/issues/4) feature, [#5](https://github.com/vishesh312/tinydb/issues/5) vague. Texts are in [`experiment/issues/`](experiment/issues/) |
-| Report | [`report.pdf`](report.pdf), built from [`report/report.md`](report/report.md) (`TBD(run)`: not generated yet) |
+| Report | [`report.pdf`](report.pdf), built from [`report/report.md`](report/report.md) (8-page body + appendices; build command at the top of `report/report.md`) |
 | Demo video | `TBD(run)`: link will be added here after a complete live run |
 
 ## Architecture in one paragraph
@@ -19,7 +19,7 @@ A Python orchestrator (`autose`) runs a **deterministic state machine** through 
 
 ```
 README.md                         this file
-report.pdf                        TBD(run): generated from report/report.md
+report.pdf                        generated from report/report.md
 report/report.md                  report source (8 pages + appendices)
 demo.mp4 / link                   TBD(run): see the table above
 architecture/
@@ -41,7 +41,7 @@ results/
 | Deliverable | Link |
 |---|---|
 | Component view | [`architecture/views/component-view.md`](architecture/views/component-view.md) ([png](architecture/views/component-view.png)) |
-| Sequence view | [`architecture/views/sequence-view.md`](architecture/views/sequence-view.md) ([png](architecture/views/sequence-view.png)). This is the *planned* sequence for now. It will be replaced with a real run's sequence: `TBD(run)` |
+| Sequence view | [`architecture/views/sequence-view.md`](architecture/views/sequence-view.md) ([png](architecture/views/sequence-view.png)). The real run for issue #1 (Actions run 45405751306, PR #14), including the quota-failed review and the `awaiting-human` fail-safe |
 | Stage map (agent, artifact and check per stage) | [`architecture/views/stage-map.md`](architecture/views/stage-map.md) |
 | State machine | [`architecture/views/state-machine.png`](architecture/views/state-machine.png) (source `.mmd`) |
 | ADR index and summary table | [`architecture/decisions/README.md`](architecture/decisions/README.md) |
