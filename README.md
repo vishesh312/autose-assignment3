@@ -61,17 +61,17 @@ From [DESIGN §7](architecture/DESIGN.md#7-models-adr-006-amended-by-adr-014), [
 
 | Role | Stage | Model | Effort | Per-call cap (notional $) |
 |---|---|---|---|---|
-| Analyst | S1 | `gpt-6.1-sol` | medium | $0.75 |
-| Judge (single call, no tools) | S1 check | `gpt-6.1-sol` | low | $0.05 |
-| Architect | S2 | `gpt-6.1-sol` | medium | $0.75 |
-| Developer | S3 | `gpt-6.1-sol` | high | $1.50 |
-| Tester | S4 | `gpt-6.1-sol` | medium | $1.00 |
+| Analyst | S1 | `gpt-6.1-terra` | medium | $0.75 |
+| Judge (single call, no tools) | S1 check | `gpt-6.1-terra` | low | $0.05 |
+| Architect | S2 | `gpt-6.1-terra` | medium | $0.75 |
+| Developer | S3 | `gpt-6.1-terra` | high | $1.50 |
+| Tester | S4 | `gpt-6.1-terra` | medium | $1.00 |
 | Release | S5 | none (deterministic code) | — | — |
-| Reviewer | S6 | `gpt-6-astra` | high | $2.00 |
-| Verifier (one call per blocking finding, ADR-015) | S6 | `gpt-6-astra` | medium | $0.50 |
-| Friendly reviewer (E1 arm only) | — | `gpt-6.1-sol` (builder model) | high | $2.00 |
+| Reviewer | S6 | `gpt-6-luna` | high | $2.00 |
+| Verifier (one call per blocking finding, ADR-015) | S6 | `gpt-6-luna` | medium | $0.50 |
+| Friendly reviewer (E1 arm only) | — | `gpt-6.1-terra` (builder model) | high | $2.00 |
 | Cross-vendor reviewer + verifier (E1 arm only, via `agy`) | — | Claude Opus 4.6 | — | — |
-| Builder (E2 variant B only) | — | `gpt-6.1-sol` | high | $2.50 |
+| Builder (E2 variant B only) | — | `gpt-6.1-terra` | high | $2.50 |
 
 **Budget.** A subscription has no per-call price, so costs are *notional list-price-equivalent dollars* computed from each call's token counts (`NOTIONAL_PRICES` in [`workflow/autose/backends.py`](workflow/autose/backends.py)). Run cap: **$10 (notional) per run**. The orchestrator aborts before any call whose cap could exceed it, and it reserves one Reviewer cap plus one Verifier cap before it starts a rework. Codex has no per-call budget flag, so per-call caps are checked after each call (each call is bounded by a 20-minute timeout). Token counts, the real consumption, are reported in [`results/tokens.md`](results/tokens.md).
 
