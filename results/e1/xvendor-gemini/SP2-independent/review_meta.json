@@ -1,0 +1,23 @@
+{
+  "issue": 3,
+  "round": 1,
+  "head_sha": "a9315336324793d3d77a800f86437fd19ce6420b",
+  "base_ref": "edff96aeb2616402e9489d46e90a592c05565621",
+  "variant": "independent",
+  "model": "gemini-3.8-flash-high",
+  "valid": true,
+  "problems": [],
+  "cost_usd": 0.2301,
+  "reviewer_verdict": "changes_requested",
+  "verification": {
+    "original_verdict": "changes_requested",
+    "counts": {
+      "confirmed": 2,
+      "plausible": 0,
+      "rejected": 0,
+      "unverified": 0
+    },
+    "cost_usd": 0.0565
+  },
+  "review_rules": false
+}

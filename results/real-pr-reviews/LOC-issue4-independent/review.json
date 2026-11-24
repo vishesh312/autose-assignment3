@@ -1,0 +1,73 @@
+{
+  "checks_performed": [
+    {
+      "command": "git diff edff96aeb2616402e9489d46e90a592c05565621...HEAD",
+      "result": "Showed additions of limit: Optional[int] = None to Table.search in tinydb/table.py, updating docstrings and applying [:limit] to cached and uncached return values, plus 12 test cases in tests/test_autose_issue_4.py."
+    },
+    {
+      "command": "python -m pytest -q",
+      "result": "240 passed in 0.78s (100% pass rate across test suite)."
+    },
+    {
+      "command": "python -m mypy tinydb tests",
+      "result": "Success: no issues found in 20 source files."
+    },
+    {
+      "command": "python -m pytest /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/test_probe_limit.py -v && python /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/probe_base_behavior.py && python -m pytest -q",
+      "result": "5 probe tests passed (cache isolation, JSON storage persistence/invalidation, uncacheable queries, base comparison, negative limit behavior); confirmed base table.py rejected limit; 240 unit tests passed."
+    }
+  ],
+  "expected_behaviour_from_issue": [
+    "`search(cond, limit=N)` returns at most N documents matching the condition.",
+    "Matches are returned in normal order (document ID / insertion order, matching existing `search` order).",
+    "If fewer than N documents match the condition, all matching documents are returned.",
+    "If no documents match the condition, an empty list `[]` is returned.",
+    "`limit=None` (the default) returns all matching documents without limit, maintaining backwards compatibility.",
+    "Omitting `limit` (e.g. `db.search(cond)`) behaves identically to `limit=None`.",
+    "`search` with `limit` works across both the default table (`db.search`) and explicit tables (`db.table('name').search`).",
+    "The query cache correctly isolates searches with different limits: `search(cond, limit=1)` followed by `search(cond)` must return all matches rather than 1, and an unlimited search followed by `search(cond, limit=1)` must return at most 1 match."
+  ],
+  "findings": [
+    {
+      "category": "code",
+      "description": "Passing a negative integer for `limit` (e.g. `limit=-1`) is not validated and gets passed directly to Python slice indexing `[:limit]`, returning all matching documents except the last N instead of returning an empty list or raising a `ValueError`.",
+      "evidence": "Running `test_probe_negative_limit_behavior` with `db.search(where('v') > 0, limit=-1)` on 3 matching documents returned 2 documents (`[1, 2]`) because Python list slice `docs[:-1]` omits the last item.",
+      "file": "tinydb/table.py",
+      "id": "nit-negative-limit-slicing",
+      "line": 252,
+      "severity": "nit",
+      "suggested_fix": "If negative limits should not be treated as negative slice offsets, validate that `limit >= 0` (e.g. `if limit is not None and limit < 0: raise ValueError('limit must be non-negative')` or treat negative values as 0)."
+    }
+  ],
+  "injection_attempts_noticed": [],
+  "review_md": "# Pull Request Review: Issue #4 - Add a `limit` argument to `search()`\n\n## Verdict\n**APPROVE**\n\n---\n\n## Summary\nThe pull request correctly implements the requested `limit` argument for `Table.search()`, defaulting to `None` to preserve backwards compatibility. The query cache stores the complete match list and slices the result on demand, ensuring complete cache isolation between limited and unlimited queries across default and named tables. Existing test suites, type checking, and newly added edge-case probe tests all pass cleanly.\n\n---\n\n## Important Findings\nNone.\n\n---\n\n## Pre-existing Findings\nNone.\n\n---\n\n## Nits\n- **[nit-negative-limit-slicing](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/pr/tinydb/table.py#L252)** (`code`): Passing a negative integer for `limit` (e.g. `limit=-1`) is not validated and gets passed directly to Python slice indexing `[:limit]`, returning all matching documents except the last N instead of returning an empty list or raising a `ValueError`.\n  - *Evidence*: Calling `db.search(where('v') > 0, limit=-1)` on 3 matching documents returned 2 documents (`[1, 2]`).\n  - *Suggested Fix*: If negative limits should not be treated as negative slice offsets, add validation `if limit is not None and limit < 0: raise ValueError('limit must be non-negative')` (or clamp negative limits to 0).\n\n---\n\n## Previous-Round Status\nRound 1 review: no previous rounds.\n\n---\n\n## Risk Hypotheses Tested\n1. **Hypothesis**: The change is wrong if calling `search(cond, limit=K)` on a cold cache stores truncated results in `_query_cache`, causing subsequent unlimited searches `search(cond)` or `count(cond)` to return only K results.\n   - *How tested*: Wrote and executed `test_probe_cache_isolation_and_count` in [test_probe_limit.py](file:///var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/test_probe_limit.py), calling `db.search(q, limit=1)` followed by `db.count(q)` and `db.search(q)` on a 3-item match set.\n   - *Outcome*: **Refuted** (`search(q, limit=1)` returned 1 item, while subsequent `count(q)` returned 3 and `search(q)` returned all 3 items).\n\n2. **Hypothesis**: The change is wrong if `search(cond, limit=N)` behaves inconsistently when backed by persistent `JSONStorage` or fails to invalidate cached query slices after writes (`insert`, `update`, `delete`).\n   - *How tested*: Wrote and executed `test_probe_json_storage_and_mutation` in [test_probe_limit.py](file:///var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/test_probe_limit.py) using `JSONStorage`, verifying limit slicing across disk persist/reopen cycles and verifying cache invalidation upon inserting new documents.\n   - *Outcome*: **Refuted** (JSONStorage persistence works identically, disk reload retains data, and writes properly invalidate the cache so subsequent limited searches reflect newly inserted documents).\n\n3. **Hypothesis**: The change is wrong if the new test suite `tests/test_autose_issue_4.py` would pass even on the base branch without the PR's implementation.\n   - *How tested*: Inspected base ref `edff96aeb2616402e9489d46e90a592c05565621:tinydb/table.py` and executed [probe_base_behavior.py](file:///var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/probe_base_behavior.py) to verify whether `Table.search` previously accepted `limit`.\n   - *Outcome*: **Refuted** (On the base branch, `Table.search` only took `self, cond: QueryLike`. Any call with `limit=...` raises `TypeError: Table.search() got an unexpected keyword argument 'limit'`. The new tests strictly fail on the base branch).\n\n4. **Hypothesis**: The change is wrong if uncacheable queries (`cond.is_cacheable() == False`) fail to respect the `limit` argument when evaluated directly without caching.\n   - *How tested*: Wrote and executed `test_probe_uncacheable_query` in [test_probe_limit.py](file:///var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/test_probe_limit.py) with a custom query object returning `is_cacheable() == False`.\n   - *Outcome*: **Refuted** (`search` properly returned `docs[:limit]` even when `is_cacheable()` was `False`).\n\n5. **Hypothesis**: The change is wrong if passing a negative limit (e.g. `limit=-1`) causes unexpected truncation by returning all documents except the last N instead of raising a ValueError or returning an empty list.\n   - *How tested*: Executed `test_probe_negative_limit_behavior` in [test_probe_limit.py](file:///var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/test_probe_limit.py) calling `db.search(where('v') > 0, limit=-1)` on 3 matching documents.\n   - *Outcome*: **Confirmed** (Returned 2 documents because `docs[:-1]` slices off the last element. Confirmed as a minor nit).\n\n---\n\n## Commands Run\n- `git diff edff96aeb2616402e9489d46e90a592c05565621...HEAD`: Inspected diff across codebase.\n- `python -m pytest -q`: Ran entire unit test suite (240 passed in 0.78s).\n- `python -m mypy tinydb tests`: Verified type annotations and signatures (Success: no issues found in 20 source files).\n- `python -m pytest /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/test_probe_limit.py -v && python /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/probe_base_behavior.py && python -m pytest -q`: Executed independent test probes, verified base behavior, and re-verified full test suite.\n",
+  "risk_hypotheses": [
+    {
+      "how_tested": "Wrote and executed `test_probe_cache_isolation_and_count` in `/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/test_probe_limit.py`, calling `db.search(q, limit=1)` followed by `db.count(q)` and `db.search(q)` on a 3-item match set.",
+      "hypothesis": "The change is wrong if calling `search(cond, limit=K)` on a cold cache stores truncated results in `_query_cache`, causing subsequent unlimited searches `search(cond)` or `count(cond)` to return only K results.",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Wrote and executed `test_probe_json_storage_and_mutation` in `/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/test_probe_limit.py` using `JSONStorage`, verifying limit slicing across disk persist/reopen cycles and verifying cache invalidation upon inserting new documents.",
+      "hypothesis": "The change is wrong if `search(cond, limit=N)` behaves inconsistently when backed by persistent `JSONStorage` or fails to invalidate cached query slices after writes (insert, update, delete).",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Inspected base ref `edff96aeb2616402e9489d46e90a592c05565621:tinydb/table.py` and executed `/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/probe_base_behavior.py` to verify whether `Table.search` previously accepted `limit`.",
+      "hypothesis": "The change is wrong if the new test suite `tests/test_autose_issue_4.py` would pass even on the base branch without the PR's implementation.",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Wrote and executed `test_probe_uncacheable_query` in `/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/test_probe_limit.py` with a custom query object returning `is_cacheable() == False`.",
+      "hypothesis": "The change is wrong if uncacheable queries (`cond.is_cacheable() == False`) fail to respect the `limit` argument when evaluated directly without caching.",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Executed `test_probe_negative_limit_behavior` in `/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-bnjwbfua/probes/test_probe_limit.py` calling `db.search(where('v') > 0, limit=-1)` on 3 matching documents.",
+      "hypothesis": "The change is wrong if passing a negative limit (e.g. `limit=-1`) causes unexpected truncation by returning all documents except the last N instead of raising a ValueError or returning an empty list.",
+      "outcome": "confirmed"
+    }
+  ],
+  "summary": "The pull request correctly implements the requested `limit` argument for `Table.search()`, defaulting to `None` to preserve backwards compatibility. The query cache correctly stores the full match list and slices the result on demand, ensuring complete cache isolation between limited and unlimited queries across default and named tables. Existing test suites, type checking, and newly added edge-case probe tests all pass cleanly.",
+  "verdict": "approve"
+}

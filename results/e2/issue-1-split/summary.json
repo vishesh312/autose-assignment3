@@ -1,0 +1,13 @@
+{
+  "issue": 1,
+  "variant": "split",
+  "status": "tests-passed",
+  "stop_reason": null,
+  "attempts": {
+    "S3": 1,
+    "S4": 1
+  },
+  "design_revisits": 0,
+  "cost_usd": 0.4278,
+  "dir": "/private/tmp/claude-501/-Users-vishesh-College-4-1-ASE-autose-assignment3/51dce3d2-cbe4-40aa-b3ed-2007c29ee1d2/scratchpad/e2/home-split/issue-1"
+}

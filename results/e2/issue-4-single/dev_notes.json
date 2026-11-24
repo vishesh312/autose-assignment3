@@ -1,0 +1,10 @@
+{
+  "contested_tests": [],
+  "deviations_from_design": [],
+  "files_changed": [
+    "tinydb/table.py",
+    "tests/test_autose_issue_4.py"
+  ],
+  "self_check": "Ran python -m pycodestyle tests/test_autose_issue_4.py (clean). Ran python -m compileall -q tinydb (clean). Ran python -m mypy tinydb (Success: no issues found in 10 source files). Ran python -m pytest -v tests/test_autose_issue_4.py (8 passed). Ran python -m pytest -q (236 passed). Reviewed git diff and git status to verify changes conform to design and allowlist.",
+  "summary": "Added an optional limit parameter to Table.search (defaulting to None), allowing search queries on default and custom tables to return at most the first N matching documents in document ID order. To ensure full query cache isolation, the complete unconstrained query match list is cached and sliced with [:limit] on return. Created tests covering all acceptance criteria and edge cases in tests/test_autose_issue_4.py."
+}

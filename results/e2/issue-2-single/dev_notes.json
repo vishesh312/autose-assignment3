@@ -1,0 +1,10 @@
+{
+  "contested_tests": [],
+  "deviations_from_design": [],
+  "files_changed": [
+    "tinydb/queries.py",
+    "tests/test_autose_issue_2.py"
+  ],
+  "self_check": "Ran `python -m compileall -q tinydb` (passed with 0 errors). Ran `python -m mypy tinydb` and `python -m mypy tests/test_autose_issue_2.py` (both passed with 0 issues). Ran `python -m pytest tests/test_autose_issue_2.py` before fix (5 failed, 1 passed as expected on base commit) and after fix (all 6 passed). Ran full test suite `python -m pytest -q` (all 234 tests passed). Verified `git diff` and `git status` confirmed only allowed files were modified with clean PEP 8 compliance.",
+  "summary": "Updated Query.fragment to include self._path in the query identity tuple alongside the frozen document mapping. This prevents fragment queries with identical values on distinct field paths from comparing equal or colliding in Table query caches. Added unit and regression tests in tests/test_autose_issue_2.py covering AC-1 through AC-5 as well as path compatibility checks."
+}

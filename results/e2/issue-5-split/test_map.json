@@ -1,0 +1,47 @@
+{
+  "mapping": [
+    {
+      "ac": "AC-1",
+      "tests": [
+        "tests/test_autose_issue_5.py::test_ac1_in_db_doc_id_exists",
+        "tests/test_autose_issue_5.py::test_ac1_in_db_doc_id_missing"
+      ]
+    },
+    {
+      "ac": "AC-2",
+      "tests": [
+        "tests/test_autose_issue_5.py::test_ac2_in_db_doc_id_removed"
+      ]
+    },
+    {
+      "ac": "AC-3",
+      "tests": [
+        "tests/test_autose_issue_5.py::test_ac3_in_db_matching_query",
+        "tests/test_autose_issue_5.py::test_ac3_in_db_matching_query_instance_and_callable"
+      ]
+    },
+    {
+      "ac": "AC-4",
+      "tests": [
+        "tests/test_autose_issue_5.py::test_ac4_in_db_non_matching_query",
+        "tests/test_autose_issue_5.py::test_ac4_in_db_non_matching_callable"
+      ]
+    },
+    {
+      "ac": "AC-5",
+      "tests": [
+        "tests/test_autose_issue_5.py::test_ac5_in_db_doc_dict_raises_type_error",
+        "tests/test_autose_issue_5.py::test_ac5_in_db_invalid_types_raise_type_error"
+      ]
+    },
+    {
+      "ac": "AC-6",
+      "tests": [
+        "tests/test_autose_issue_5.py::test_ac6_in_named_table_doc_id_exists",
+        "tests/test_autose_issue_5.py::test_ac6_in_named_table_queries_and_invalid_types"
+      ]
+    }
+  ],
+  "notes": "### Pytest Results\n- `python -m pytest tests/test_autose_issue_5.py -q`: 11 passed in 0.15s\n- `python -m pytest -q`: 239 passed in 0.53s\n\n### Failing Tests\n- None. All 11 tests passed.\n\n### Ambiguities & Interpretation\n- Acceptance criteria and public API were completely clear: `__contains__` on both `TinyDB` and `Table` instances verifies membership by integer document ID (excluding boolean values) or callable query, returning a boolean, and raising a `TypeError` for other types (e.g. document dicts, strings, floats, booleans, lists, None).\n- Tests cover both primary criteria cases and edge cases (e.g., non-existent IDs, `Query()` instances, lambda queries, non-matching queries, boolean/invalid types raising `TypeError`, and named table isolation).\n\n### Contested Tests & Suspicious Text\n- Contested tests: None.\n- Suspicious text: None.\n",
+  "test_file": "tests/test_autose_issue_5.py"
+}

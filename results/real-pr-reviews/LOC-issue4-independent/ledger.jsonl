@@ -1,0 +1,1 @@
+{"ts": "2026-11-24T14:11:06Z", "run_id": "local-20261124T193533", "issue": 4, "round": 1, "stage": "S6", "attempt": 1, "actor": "reviewer", "model": "gemini-3.8-flash-high", "event": "check", "passed": true, "reason": "approve", "tokens_in": 97425, "tokens_out": 52880, "cache_read": 1044441, "cache_write": 0, "cost_usd": 0.2596, "seconds": 325.5515}

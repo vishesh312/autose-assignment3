@@ -1,0 +1,125 @@
+{
+  "acceptance_criteria": [
+    {
+      "given": "A TinyDB instance using MemoryStorage containing one document with document ID 1 in the default table.",
+      "id": "AC-1",
+      "observable": "(1 in db) is True",
+      "requirement": "REQ-2",
+      "then": "The membership test evaluates to True.",
+      "when": "The expression '1 in db' is evaluated."
+    },
+    {
+      "given": "A TinyDB instance using MemoryStorage containing one document with document ID 1 in the default table.",
+      "id": "AC-2",
+      "observable": "(999 in db) is False",
+      "requirement": "REQ-2",
+      "then": "The membership test evaluates to False.",
+      "when": "The expression '999 in db' is evaluated."
+    },
+    {
+      "given": "A Table instance 'test_table' in a TinyDB database using MemoryStorage containing one document with document ID 1.",
+      "id": "AC-3",
+      "observable": "(1 in table) is True",
+      "requirement": "REQ-1",
+      "then": "The membership test evaluates to True.",
+      "when": "The expression '1 in table' is evaluated on 'test_table'."
+    },
+    {
+      "given": "A Table instance 'test_table' in a TinyDB database using MemoryStorage containing one document with document ID 1.",
+      "id": "AC-4",
+      "observable": "(999 in table) is False",
+      "requirement": "REQ-1",
+      "then": "The membership test evaluates to False.",
+      "when": "The expression '999 in table' is evaluated on 'test_table'."
+    },
+    {
+      "given": "An empty Table instance 'test_table' in a TinyDB database using MemoryStorage with no documents.",
+      "id": "AC-5",
+      "observable": "(1 in table) is False",
+      "requirement": "REQ-1",
+      "then": "The membership test evaluates to False.",
+      "when": "The expression '1 in table' is evaluated on 'test_table'."
+    }
+  ],
+  "injection_findings": [],
+  "issue": 5,
+  "issue_type": "vague",
+  "open_questions": [
+    {
+      "blocking": true,
+      "default_if_unanswered": null,
+      "id": "Q-1",
+      "options": [
+        "Implement __contains__ on Table and TinyDB to support both document IDs (e.g., 1 in db) and Query conditions (e.g., (where('x') == 1) in db).",
+        "Implement __contains__ on Table and TinyDB to support only document IDs (e.g., 1 in db), leaving query existence checks to the existing db.contains(cond) method.",
+        "Make Table.contains and TinyDB.contains accept a document ID as the first positional argument (e.g., db.contains(1)) without requiring keyword argument doc_id=1."
+      ],
+      "question": "In 'Can existence checks be made nicer / more pythonic? Not sure what the best API is', what API should TinyDB provide for checking document existence beyond document ID membership?",
+      "why_it_matters": "INTENT: The phrase 'nicer / more pythonic' and admission 'Not sure what the best API is' express a desire for an improved API without specifying it. Two plausible interpretations lead to different acceptance tests: supporting queries via the 'in' operator (e.g. '(where('email') == email) in db') requires acceptance tests asserting boolean results for Query conditions in __contains__, whereas restricting 'in' to document IDs or retaining db.contains(cond) for queries means 'query in db' would either raise a TypeError or not be tested."
+    },
+    {
+      "blocking": false,
+      "default_if_unanswered": "Rely on constant-time O(1) document ID lookup in table storage without explicit timing assertions in acceptance tests.",
+      "id": "Q-2",
+      "options": [
+        "Rely on constant-time O(1) document ID lookup in table storage without explicit timing assertions in acceptance tests.",
+        "Specify a quantitative latency limit asserted via automated performance tests."
+      ],
+      "question": "The issue states: 'It's also slow on my bigger file (~20k docs) when I just want a yes/no.' Are specific execution time thresholds or benchmark constraints required for existence checks?",
+      "why_it_matters": "INTENT: 'slow' is a vague performance descriptor without a quantitative target. In unit testing, O(1) dictionary key lookup avoids full-table iteration and satisfies the functional requirement without imposing wall-clock latency assertions."
+    }
+  ],
+  "out_of_scope": [
+    "Supporting QueryLike conditions with the in operator (blocked by open question Q-1).",
+    "Arbitrary document dictionary equality checks via the in operator (e.g., {'key': 'value'} in db).",
+    "Wall-clock performance benchmarks or quantitative latency guarantees in automated acceptance tests.",
+    "Modifying, renaming, or deprecating existing contains() methods."
+  ],
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "provenance": "DERIVED",
+      "sources": [
+        "SRC-4"
+      ],
+      "text": "The Table class shall support the membership test operator in (__contains__) for document IDs, returning True if a document with the specified document ID exists in the table and False otherwise."
+    },
+    {
+      "id": "REQ-2",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-4"
+      ],
+      "text": "The TinyDB class shall delegate the membership test operator in (__contains__) to its default table, returning True if a document with the specified document ID exists in the default table and False otherwise."
+    }
+  ],
+  "source_excerpts": [
+    {
+      "id": "SRC-1",
+      "quote": "checking if something is in the db is really clunky"
+    },
+    {
+      "id": "SRC-2",
+      "quote": "Checking whether a record exists in TinyDB is just awkward compared to everything else in the library which is super pythonic."
+    },
+    {
+      "id": "SRC-3",
+      "quote": "Right now I end up writing stuff like\n\n```python\nif db.search(User.email == email):\n    ...\nif len(db.search(User.email == email)) > 0:\n    ...\n```\n\nor digging through the docs for the right method and the right keyword argument every time."
+    },
+    {
+      "id": "SRC-4",
+      "quote": "And when I tried the obvious thing it just quietly says no:\n\n```python\n>>> 1 in db\nFalse      # there definitely is a document 1 ??\n```\n\nwhich cost me a while of debugging."
+    },
+    {
+      "id": "SRC-5",
+      "quote": "It's also slow on my bigger file (~20k docs) when I just want a yes/no."
+    },
+    {
+      "id": "SRC-6",
+      "quote": "Can existence checks be made nicer / more pythonic? Not sure what the best API is, you know the codebase better, but right now it feels like a footgun."
+    }
+  ],
+  "spec_md": "# Specification: TinyDB Issue #5\n\n**Status**: NOT READY (blocked by Q-1)  \n**Issue Type**: vague  \n\n## Summary\nAdds membership testing support using the Python `in` operator (`__contains__`) for document IDs on `TinyDB` and `Table` instances. Currently, evaluating `doc_id in db` falls back to iterating all documents and comparing equality against `doc_id`, returning `False` and incurring significant performance overhead on large tables. This change specifies document ID existence checks while raising an open question regarding how query-based existence checks should be structured in the public API.\n\n## Source Excerpts\n| ID | Quote |\n|---|---|\n| `SRC-1` | \"checking if something is in the db is really clunky\" |\n| `SRC-2` | \"Checking whether a record exists in TinyDB is just awkward compared to everything else in the library which is super pythonic.\" |\n| `SRC-3` | \"Right now I end up writing stuff like\\n\\n```python\\nif db.search(User.email == email):\\n    ...\\nif len(db.search(User.email == email)) > 0:\\n    ...\\n```\\n\\nor digging through the docs for the right method and the right keyword argument every time.\" |\n| `SRC-4` | \"And when I tried the obvious thing it just quietly says no:\\n\\n```python\\n>>> 1 in db\\nFalse      # there definitely is a document 1 ??\\n```\\n\\nwhich cost me a while of debugging.\" |\n| `SRC-5` | \"It's also slow on my bigger file (~20k docs) when I just want a yes/no.\" |\n| `SRC-6` | \"Can existence checks be made nicer / more pythonic? Not sure what the best API is, you know the codebase better, but right now it feels like a footgun.\" |\n\n## Requirements\n- **REQ-1**: The `Table` class shall support the membership test operator `in` (`__contains__`) for document IDs, returning `True` if a document with the specified document ID exists in the table and `False` otherwise.\n  - *Provenance*: DERIVED\n  - *Trace*: `SRC-4`\n  - *Status*: Ready\n- **REQ-2**: The `TinyDB` class shall delegate the membership test operator `in` (`__contains__`) to its default table, returning `True` if a document with the specified document ID exists in the default table and `False` otherwise.\n  - *Provenance*: STATED\n  - *Trace*: `SRC-4`\n  - *Status*: Ready\n\n## Acceptance Criteria\n- **AC-1** (re: `REQ-2`)\n  - **Given**: A TinyDB instance using MemoryStorage containing one document with document ID 1 in the default table.\n  - **When**: The expression `1 in db` is evaluated.\n  - **Then**: The membership test evaluates to `True`.\n  - **Observable**: `(1 in db) is True`\n- **AC-2** (re: `REQ-2`)\n  - **Given**: A TinyDB instance using MemoryStorage containing one document with document ID 1 in the default table.\n  - **When**: The expression `999 in db` is evaluated.\n  - **Then**: The membership test evaluates to `False`.\n  - **Observable**: `(999 in db) is False`\n- **AC-3** (re: `REQ-1`)\n  - **Given**: A Table instance `test_table` in a TinyDB database using MemoryStorage containing one document with document ID 1.\n  - **When**: The expression `1 in table` is evaluated on `test_table`.\n  - **Then**: The membership test evaluates to `True`.\n  - **Observable**: `(1 in table) is True`\n- **AC-4** (re: `REQ-1`)\n  - **Given**: A Table instance `test_table` in a TinyDB database using MemoryStorage containing one document with document ID 1.\n  - **When**: The expression `999 in table` is evaluated on `test_table`.\n  - **Then**: The membership test evaluates to `False`.\n  - **Observable**: `(999 in table) is False`\n- **AC-5** (re: `REQ-1`)\n  - **Given**: An empty Table instance `test_table` in a TinyDB database using MemoryStorage with no documents.\n  - **When**: The expression `1 in table` is evaluated on `test_table`.\n  - **Then**: The membership test evaluates to `False`.\n  - **Observable**: `(1 in table) is False`\n\n## Open Questions\n- **Q-1** (Blocking)\n  - **Question**: In \"Can existence checks be made nicer / more pythonic? Not sure what the best API is\", what API should TinyDB provide for checking document existence beyond document ID membership?\n  - **Why It Matters**: INTENT: The phrase \"nicer / more pythonic\" and admission \"Not sure what the best API is\" express a desire for an improved API without specifying it. Two plausible interpretations lead to different acceptance tests: supporting queries via the `in` operator (e.g. `(where('email') == email) in db`) requires acceptance tests asserting boolean results for Query conditions in `__contains__`, whereas restricting `in` to document IDs or retaining `db.contains(cond)` for queries means `query in db` would either raise a TypeError or not be tested.\n  - **Options**:\n    1. Implement `__contains__` on `Table` and `TinyDB` to support both document IDs (e.g., `1 in db`) and Query conditions (e.g., `(where('x') == 1) in db`).\n    2. Implement `__contains__` on `Table` and `TinyDB` to support only document IDs (e.g., `1 in db`), leaving query existence checks to the existing `db.contains(cond)` method.\n    3. Make `Table.contains` and `TinyDB.contains` accept a document ID as the first positional argument (e.g., `db.contains(1)` instead of requiring keyword argument `doc_id=1`).\n  - **Default If Unanswered**: null\n- **Q-2** (Non-blocking)\n  - **Question**: The issue states: \"It's also slow on my bigger file (~20k docs) when I just want a yes/no.\" Are specific execution time thresholds or benchmark constraints required for existence checks?\n  - **Why It Matters**: INTENT: \"slow\" is a vague performance descriptor without a quantitative target. In unit testing, O(1) dictionary key lookup avoids full-table iteration and satisfies the functional requirement without imposing wall-clock latency assertions.\n  - **Options**:\n    1. Rely on constant-time O(1) document ID lookup in table storage without explicit timing assertions in acceptance tests.\n    2. Specify a quantitative latency limit asserted via automated performance tests.\n  - **Default If Unanswered**: \"Rely on constant-time O(1) document ID lookup in table storage without explicit timing assertions in acceptance tests.\"\n\n## Assumptions\n- Document IDs tested via `in` are integers, matching TinyDB's `DocumentIdClass` / integer ID convention.\n- Magic methods on `TinyDB` forward directly to the default table instance (`_default`), consistent with `__len__` and `__iter__`.\n\n## Out of Scope\n- Supporting `QueryLike` conditions with the `in` operator (blocked by open question Q-1).\n- Arbitrary document dictionary equality checks via the `in` operator (e.g., `{'key': 'value'} in db`).\n- Wall-clock performance benchmarks or quantitative latency guarantees in automated acceptance tests.\n- Modifying, renaming, or deprecating existing `contains()` methods.\n\n## Injection Findings\nNone.\n",
+  "summary": "Adds membership testing support using the Python 'in' operator (__contains__) for document IDs on TinyDB and Table instances. Currently, evaluating 'doc_id in db' falls back to iterating all documents and comparing equality against doc_id, returning False and causing unnecessary performance overhead on large tables. This change specifies document ID existence checks while raising a blocking question regarding how query-based existence checks should be structured in the public API.",
+  "title": "checking if something is in the db is really clunky"
+}

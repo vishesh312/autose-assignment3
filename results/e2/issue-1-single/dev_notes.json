@@ -1,0 +1,10 @@
+{
+  "contested_tests": [],
+  "deviations_from_design": [],
+  "files_changed": [
+    "tinydb/table.py",
+    "tests/test_autose_issue_1.py"
+  ],
+  "self_check": "Ran `python -m compileall -q tinydb tests/test_autose_issue_1.py` (passed with code 0). Ran `python -m mypy tinydb tests/test_autose_issue_1.py` (passed, 0 issues across 11 source files). Ran `python -m pytest tests/test_autose_issue_1.py -v` (8 passed). Ran `python -m pytest -q` (all 236 tests passed). Reviewed `git diff` and `git status`: only tinydb/table.py and tests/test_autose_issue_1.py were changed/added. No unresolved items or external dependencies encountered.",
+  "summary": "Updated Table.update and Table.remove in tinydb/table.py to normalize requested doc_ids via self.document_id_class, allowing string document IDs to match stored document IDs consistently with get(). Widened type hints for doc_ids to Optional[Iterable[Union[int, str]]] and updated docstrings accordingly. Added comprehensive acceptance tests in tests/test_autose_issue_1.py covering AC-1 through AC-6 across MemoryStorage and JSONStorage configurations."
+}

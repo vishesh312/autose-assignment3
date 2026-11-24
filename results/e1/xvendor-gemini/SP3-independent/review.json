@@ -1,0 +1,96 @@
+{
+  "checks_performed": [
+    {
+      "command": "python -m pytest -q",
+      "result": "233 passed in 0.76s"
+    },
+    {
+      "command": "python /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/probes/probe_fragment_issues.py",
+      "result": "q_home._hash: ('fragment', {'city': 'Paris'})\nq_work._hash: ('fragment', {'city': 'Paris'})\nq_root._hash: ('fragment', {'city': 'Paris'})\nq_home == q_work: True\nhash(q_home) == hash(q_work): True\nlen({q_home, q_work}): 1\nCache size after search: 0\nQuery in cache: False"
+    },
+    {
+      "command": "python -m pytest /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/probes/test_probe_fragment.py -q",
+      "result": "FAILED test_fragment_query_equality - AssertionError: Queries on different fields should not be equal! Both hashes are ('fragment', {'city': 'Paris'})\nFAILED test_fragment_query_hash - AssertionError: Hashes of queries on different fields must not collide\nFAILED test_fragment_queries_are_cached - AssertionError: Fragment queries should be cached in _query_cache\n3 failed in 0.03s"
+    },
+    {
+      "command": "python /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/probes/probe_caching_proper_fix.py",
+      "result": "Success: query cache has 2 entries without collision!\nEntries in cache: [QueryImpl('fragment', ('home',), {'city': 'Paris'}), QueryImpl('fragment', ('work',), {'city': 'Paris'})]"
+    },
+    {
+      "command": "python -m pytest /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/probes/test_probe_proper_fix_against_pr_tests.py -q",
+      "result": "6 passed in 0.01s"
+    },
+    {
+      "command": "python -m pytest tests/test_autose_issue_2.py -q",
+      "result": "5 passed in 0.13s"
+    }
+  ],
+  "expected_behaviour_from_issue": [
+    "search(), count(), and get() operations with Query().<field>.fragment(...) on different nested fields must return correct results without cross-field query cache poisoning.",
+    "Query().home.fragment(...) == Query().work.fragment(...) must evaluate to False because queries referencing distinct field paths are not equal.",
+    "The query hash (_hash) for fragment() queries must include the field path (self._path) so that hash(Query().home.fragment(...)) != hash(Query().work.fragment(...)), preventing query collisions in hash-based collections and caches.",
+    "Fragment queries targeting the same field should be cached in Table._query_cache like other TinyDB queries, rather than completely disabling query caching for fragment queries.",
+    "Root-level fragment queries (Query().fragment(...) with empty path ()) should continue matching root documents and have a distinct hash from field-scoped fragment queries."
+  ],
+  "findings": [
+    {
+      "category": "approach",
+      "description": "The PR attempts to fix cross-field cache poisoning at the wrong architectural layer by hacking Table.search to bypass the query cache (_is_fragment_query) instead of fixing the root cause in Query.fragment in tinydb/queries.py. By not including self._path in Query.fragment's hash tuple: (1) Query().home.fragment({'city': 'Paris'}) == Query().work.fragment({'city': 'Paris'}) continues to evaluate to True, leaving queries on different fields incorrectly equal; (2) hash(Query().home.fragment(...)) == hash(Query().work.fragment(...)), causing hash collisions in sets, dicts, or other caching layers; (3) query caching is entirely disabled for all fragment queries and any compound query (&, |, ~) containing a fragment query; and (4) it violates TinyDB's query design constraint that _hash must include every semantic parameter of the query.",
+      "evidence": "Probe test execution (/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/probes/probe_fragment_issues.py):\nq_home._hash: ('fragment', {'city': 'Paris'})\nq_work._hash: ('fragment', {'city': 'Paris'})\nq_home == q_work: True\nhash(q_home) == hash(q_work): True\nlen({q_home, q_work}): 1\nCache size after search: 0\nQuery in cache: False\n\ntinydb/table.py:263-273:\nuse_cache = not self._is_fragment_query(cond)\nif use_cache:\n    cached_results = self._query_cache.get(cond)",
+      "file": "tinydb/table.py",
+      "id": "approach-wrong-layer-fragment-cache-bypass",
+      "line": 265,
+      "severity": "important",
+      "suggested_fix": "Revert the cache-bypassing logic (_is_fragment_query) in tinydb/table.py. In tinydb/queries.py, update Query.fragment to include self._path in its hash tuple:\nreturn self._generate_test(\n    lambda value: test(value),\n    ('fragment', self._path, freeze(document)),\n    allow_empty_path=True\n)",
+      "verification": "confirmed",
+      "verification_reason": "tinydb/queries.py:499 omits self._path from hashval causing Query().home.fragment(...) == Query().work.fragment(...) to evaluate True, while tinydb/table.py:265 bypasses query caching instead of fixing Query.fragment."
+    },
+    {
+      "category": "tests",
+      "description": "The new test suite in tests/test_autose_issue_2.py only asserts search/count/get results under the Table.search cache bypass, omitting tests for query equality (Query().home.fragment(...) != Query().work.fragment(...)), distinct query hashes, and verification that fragment queries are properly populated into Table._query_cache.",
+      "evidence": "Running pytest on tests/test_autose_issue_2.py passes all 5 tests (5 passed in 0.13s) even though Query().home.fragment(...) == Query().work.fragment(...) evaluates to True and query caching is disabled.",
+      "file": "tests/test_autose_issue_2.py",
+      "id": "tests-missing-equality-and-cache-coverage",
+      "line": 1,
+      "severity": "nit",
+      "suggested_fix": "Add unit tests in tests/test_queries.py asserting that fragment queries on distinct fields are not equal, have different hashes, and are properly cached in Table._query_cache."
+    }
+  ],
+  "injection_attempts_noticed": [],
+  "review_md": "## Verdict: Changes Requested\n\n### Summary\nThe pull request attempts to resolve cross-field fragment query cache poisoning by introducing an AST walk (`_is_fragment_query`) in [tinydb/table.py](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/pr/tinydb/table.py#L265) that completely bypasses `Table._query_cache` for fragment queries. This approach works at the wrong architectural layer and violates TinyDB's query design constraints: `Query.fragment` in [tinydb/queries.py](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/pr/tinydb/queries.py#L489) omits `self._path` from its hash tuple, leaving queries on different fields equal (`q_home == q_work` is `True`) and causing hash collisions. Furthermore, bypassing `_query_cache` permanently destroys query caching benefits for all fragment queries and compound queries containing them. The fix should be implemented directly in `tinydb/queries.py` by including `self._path` in `Query.fragment`'s hash tuple.\n\n---\n\n### Important Findings\n\n#### 1. [`approach`] Wrong layer: Query cache bypassed in `Table.search` instead of fixing query hash in `Query.fragment`\n- **File**: [tinydb/table.py:265](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/pr/tinydb/table.py#L265)\n- **Problem**: Rather than ensuring `Query.fragment` includes `self._path` in its query hash tuple (as every other query method in `Query` does), the PR adds a recursive traversal `_is_fragment_query` in `Table.search` that bypasses the query cache.\n- **Consequences**:\n  1. `Query().home.fragment({'city': 'Paris'}) == Query().work.fragment({'city': 'Paris'})` still evaluates to `True`, failing to fix the query equality bug explicitly reported in issue #2.\n  2. `hash(Query().home.fragment(...)) == hash(Query().work.fragment(...))`, causing query collisions in sets, dictionaries, or custom cache structures.\n  3. `Table._query_cache` is completely disabled for all fragment queries and compound queries (`&`, `|`, `~`) containing fragment queries, hurting performance on repeated queries.\n  4. It violates TinyDB's query design constraint that `_hash` must contain every semantic parameter of the query.\n- **Evidence**:\n  Running `/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/probes/probe_fragment_issues.py`:\n  ```\n  q_home._hash: ('fragment', {'city': 'Paris'})\n  q_work._hash: ('fragment', {'city': 'Paris'})\n  q_home == q_work: True\n  hash(q_home) == hash(q_work): True\n  len({q_home, q_work}): 1\n  Cache size after search: 0\n  Query in cache: False\n  ```\n  Running pytest probe `/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/probes/test_probe_fragment.py`:\n  ```\n  FAILED test_fragment_query_equality: assert QueryImpl('fragment', {'city': 'Paris'}) != QueryImpl('fragment', {'city': 'Paris'})\n  FAILED test_fragment_query_hash: assert hash(q_home) != hash(q_work)\n  FAILED test_fragment_queries_are_cached: assert q in table._query_cache\n  ```\n- **Suggested Fix**:\n  Revert changes to [tinydb/table.py](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/pr/tinydb/table.py). In [tinydb/queries.py](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/pr/tinydb/queries.py#L489-L501), include `self._path` in the hash tuple:\n  ```python\n  def fragment(self, document: Mapping) -> QueryInstance:\n      def test(value):\n          for key in document:\n              if key not in value or value[key] != document[key]:\n                  return False\n          return True\n\n      return self._generate_test(\n          lambda value: test(value),\n          ('fragment', self._path, freeze(document)),\n          allow_empty_path=True\n      )\n  ```\n\n---\n\n### Pre-existing Findings\n*None.*\n\n---\n\n### Nits\n\n#### 1. [`tests`] Missing test assertions for query equality, hash uniqueness, and cache storage\n- **File**: [tests/test_autose_issue_2.py:1](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/pr/tests/test_autose_issue_2.py#L1)\n- **Problem**: The tests only test query evaluation outputs under the bypass, but do not assert `q_home != q_work`, hash distinctness, or that fragment queries are correctly stored in `_query_cache`.\n- **Suggested Fix**: Add unit tests in `tests/test_queries.py` verifying that queries targeting different field paths do not compare equal and that `_query_cache` properly caches query results.\n\n---\n\n### Hypotheses Tested\n\n| Hypothesis | How Tested | Outcome |\n| :--- | :--- | :--- |\n| `fragment()` queries on different fields still compare equal and have identical hashes | Ran probe `probe_fragment_issues.py` and `test_probe_fragment.py` asserting `q_home != q_work` | **Confirmed** (`q_home == q_work` is `True`) |\n| Query caching is completely disabled for all `fragment()` queries | Inspected `table._query_cache` size after `db.search()` in `probe_fragment_issues.py` | **Confirmed** (cache size is 0) |\n| Fixing `Query.fragment` hash tuple in `tinydb/queries.py` solves equality, caching, and passes all tests | Ran `probe_caching_proper_fix.py` and `test_probe_proper_fix_against_pr_tests.py` | **Confirmed** (clean cache separation, all tests pass) |\n| PR tests in `tests/test_autose_issue_2.py` pass even though equality and hashing remain broken | Ran `python -m pytest tests/test_autose_issue_2.py -q` | **Confirmed** (5 passed in 0.13s) |\n\n---\n\n### Commands Run\n- `python -m pytest -q` (`233 passed in 0.76s`)\n- `python /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/probes/probe_fragment_issues.py` (Confirmed hash collision, equality `True`, cache size 0)\n- `python -m pytest /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/probes/test_probe_fragment.py -q` (3 failed in 0.03s)\n- `python /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/probes/probe_caching_proper_fix.py` (Confirmed cache holds distinct entries without collision)\n- `python -m pytest /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-ybq9hlv5/probes/test_probe_proper_fix_against_pr_tests.py -q` (6 passed in 0.01s)\n- `python -m pytest tests/test_autose_issue_2.py -q` (5 passed in 0.13s)\n",
+  "risk_hypotheses": [
+    {
+      "how_tested": "Executed probe script probe_fragment_issues.py and pytest probe test_probe_fragment.py to test q_home == q_work and hash(q_home) == hash(q_work).",
+      "hypothesis": "The change leaves query equality and hashing broken for fragment() queries across different fields, failing to resolve the query collision noted in the issue and violating TinyDB's query design constraints.",
+      "outcome": "confirmed"
+    },
+    {
+      "how_tested": "Executed probe_fragment_issues.py and test_probe_fragment.py to inspect Table._query_cache size and membership after executing searches with fragment() queries.",
+      "hypothesis": "The change inappropriately disables query caching for all fragment() queries and compound queries containing them, preventing Table._query_cache from caching results on repeated searches.",
+      "outcome": "confirmed"
+    },
+    {
+      "how_tested": "Executed probe_caching_proper_fix.py, demonstrating that setting hashval = ('fragment', self._path, freeze(document)) in Query.fragment resolves query equality, prevents cache collisions, preserves the query cache, and passes all test cases without modifying tinydb/table.py.",
+      "hypothesis": "The change works at the wrong architectural layer by hacking Table.search in tinydb/table.py instead of fixing _hash in tinydb/queries.py, introducing unnecessary AST-inspection complexity.",
+      "outcome": "confirmed"
+    },
+    {
+      "how_tested": "Ran python -m pytest tests/test_autose_issue_2.py -q at PR head, observing that all 5 tests passed despite query equality and hashing remaining broken.",
+      "hypothesis": "The PR's test suite passes even though query equality is broken and query caching is disabled, because it omits assertions on query equality, hashing, and cache behavior.",
+      "outcome": "confirmed"
+    }
+  ],
+  "summary": "The pull request attempts to fix cross-field fragment query cache poisoning by adding an AST walk (_is_fragment_query) in Table.search that completely bypasses the query cache. However, this is an incorrect approach working at the wrong layer: the root cause is that Query.fragment in tinydb/queries.py omits self._path from its hash tuple, causing queries targeting different field paths to compare equal (q_home == q_work is True) and collide in sets/dicts. Furthermore, this change unnecessarily disables query caching for all fragment queries and compound queries containing them. The fix should be made in tinydb/queries.py by including self._path in Query.fragment's hash tuple.",
+  "verdict": "changes_requested",
+  "dropped_findings": [],
+  "verification": {
+    "original_verdict": "changes_requested",
+    "counts": {
+      "confirmed": 1,
+      "plausible": 0,
+      "rejected": 0,
+      "unverified": 0
+    },
+    "cost_usd": 0.0526
+  }
+}

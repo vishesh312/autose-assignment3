@@ -1,0 +1,39 @@
+{
+  "mapping": [
+    {
+      "ac": "AC-1",
+      "tests": [
+        "tests/test_autose_issue_2.py::test_ac1_query_equality_different_paths",
+        "tests/test_autose_issue_2.py::test_ac1_query_equality_same_path",
+        "tests/test_autose_issue_2.py::test_ac1_query_equality_nested_and_root_paths"
+      ]
+    },
+    {
+      "ac": "AC-2",
+      "tests": [
+        "tests/test_autose_issue_2.py::test_ac2_search_work_after_home",
+        "tests/test_autose_issue_2.py::test_ac2_search_nested_path"
+      ]
+    },
+    {
+      "ac": "AC-3",
+      "tests": [
+        "tests/test_autose_issue_2.py::test_ac3_search_home_after_work"
+      ]
+    },
+    {
+      "ac": "AC-4",
+      "tests": [
+        "tests/test_autose_issue_2.py::test_ac4_count_work_after_home"
+      ]
+    },
+    {
+      "ac": "AC-5",
+      "tests": [
+        "tests/test_autose_issue_2.py::test_ac5_get_work_after_home"
+      ]
+    }
+  ],
+  "notes": "### Summary of Test Execution and Results\n\n- **`python -m pytest tests/test_autose_issue_2.py -q`**: 8 passed in 0.14s.\n- **`python -m pytest -q`**: 236 passed in 0.50s.\n\n### Verification Against Base Commit (Non-Vacuous Check)\n- Tests were verified against the base commit (with `tinydb/queries.py` reverted). 6 tests failed (covering AC-1, AC-2, AC-3, AC-4) because fragment queries on different paths previously shared the same hash key `('fragment', freeze(document))`, leading to improper equality and query cache collisions.\n- AC-5 passed on both base and patched code because `Table.get` directly evaluates matching without using `_query_cache`.\n\n### Notes on Ambiguity, Contested Tests, and Suspicious Text\n- **Ambiguities**: None. The acceptance criteria and public API test hooks clearly specified expectations.\n- **Contested Tests**: None.\n- **Suspicious Text**: None.",
+  "test_file": "tests/test_autose_issue_2.py"
+}

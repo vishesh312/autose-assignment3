@@ -1,0 +1,64 @@
+{
+  "approach": "Support the Python membership test operator (`in`) on both `Table` and `TinyDB` by implementing `__contains__(self, item: Any) -> bool` on `Table` and `TinyDB`. On `Table`, `__contains__` validates operand types: if `item` is an integer document ID (`isinstance(item, int)` and not `bool`), it delegates to `self.contains(doc_id=item)`; if `item` is a callable query (such as a `QueryInstance` or predicate callable), it delegates to `self.contains(cond=item)`; otherwise, it raises a `TypeError` (preventing document-dict iteration footguns). On `TinyDB`, `__contains__` forwards membership testing to the default table instance (`item in self.table(self.default_table_name)`), matching TinyDB's existing delegation pattern for container magic methods (`__len__` and `__iter__`). This design honors all architectural constraints without modifying `contains()`, storage abstractions, or query caching.",
+  "architecture_refs": [
+    "ARCHITECTURE.md \u00a71 Overview",
+    "ARCHITECTURE.md \u00a73 Constraint 1",
+    "ARCHITECTURE.md \u00a73 Constraint 2",
+    "ARCHITECTURE.md \u00a73 Constraint 5"
+  ],
+  "changes": [
+    {
+      "acs": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4",
+        "AC-5",
+        "AC-6"
+      ],
+      "description": "In `tinydb/table.py`, add `from typing import Any` if not already present. Implement `Table.__contains__(self, item: Any) -> bool` (ideally following `__iter__` around line 743). If `isinstance(item, int) and not isinstance(item, bool)`, return `self.contains(doc_id=item)`. Elif `callable(item)`, return `self.contains(cond=item)`. Else, raise `TypeError(f'Invalid operand for membership test: expected int (doc_id) or callable (query), got {type(item).__name__}')`. This cleanly distinguishes integer doc IDs from callable queries, forbids booleans from being coerced to integer doc IDs, and prevents arbitrary types like dict documents from falling back to iteration.",
+      "kind": "new",
+      "new_file": false,
+      "path": "tinydb/table.py",
+      "symbol": "Table.__contains__"
+    },
+    {
+      "acs": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4",
+        "AC-5"
+      ],
+      "description": "In `tinydb/database.py`, add `from typing import Any` if not already present. Implement `TinyDB.__contains__(self, item: Any) -> bool` (following `__iter__` at line 274). Forward the membership check to the default table by returning `item in self.table(self.default_table_name)`. This provides uniform membership testing on the database instance matching `__len__` and `__iter__`.",
+      "kind": "new",
+      "new_file": false,
+      "path": "tinydb/database.py",
+      "symbol": "TinyDB.__contains__"
+    }
+  ],
+  "design_md": "# Design: Support Membership Test Operator (`in`) for Table and TinyDB\n\n## Approach\nCurrently, testing membership via `item in db` or `item in table` falls back to Python's default container iteration (`__iter__`), which compares each `Document` against `item`. For document IDs such as `1 in db`, this quietly returns `False` despite document 1 existing.\n\nWe address this by explicitly defining `__contains__(self, item: Any) -> bool` on both `Table` and `TinyDB`:\n1. On `Table`: We inspect the operand type:\n   - If `item` is an integer document ID (`isinstance(item, int) and not isinstance(item, bool)`), delegate directly to `self.contains(doc_id=item)`.\n   - If `item` is callable (`callable(item)`), such as a `QueryInstance` (`where(...) == ...`) or a predicate function, delegate directly to `self.contains(cond=item)`.\n   - For all other types (such as `dict`, `bool`, `str`, `list`, `float`, or `None`), raise a `TypeError`.\n2. On `TinyDB`: We forward `item in db` to the default table instance by returning `item in self.table(self.default_table_name)`, following the exact pattern of `__len__` and `__iter__` in `database.py`.\n\nThis keeps `contains()` unchanged, does not alter storage or cache mechanics, and provides pythonic, safe membership testing across both database and table objects.\n\n---\n\n## Changes Table\n\n| Path | Symbol | Kind | ACs |\n|---|---|---|---|\n| `tinydb/table.py` | `Table.__contains__` | new | AC-1, AC-2, AC-3, AC-4, AC-5, AC-6 |\n| `tinydb/database.py` | `TinyDB.__contains__` | new | AC-1, AC-2, AC-3, AC-4, AC-5 |\n\n---\n\n## Public API & Test Hooks\n\n### Public API\n\n- **`Table.__contains__(self, item: Any) -> bool`**\n  - **Behaviour:**\n    - When evaluated via `doc_id in table` where `item` is an integer document ID (`isinstance(item, int)` and `not isinstance(item, bool)`), returns `True` if a document with that integer ID exists in the table, and `False` otherwise (equivalent to `table.contains(doc_id=item)`). If an existing document is removed (e.g., `table.remove(doc_ids=[doc_id])`), subsequent checks return `False`.\n    - When evaluated via `query in table` where `item` is a callable query (`callable(item)`), returns `True` if at least one document in the table matches the query, and `False` otherwise (equivalent to `table.contains(query)`).\n    - When evaluated with any other operand type that is neither an integer document ID nor a callable query (for example a `dict` document like `{'name': 'alice'}`, a `bool`, `str`, `list`, `float`, or `None`), raises `TypeError`.\n\n- **`TinyDB.__contains__(self, item: Any) -> bool`**\n  - **Behaviour:**\n    - Forwards the membership test directly to the default table instance (`item in self.table(self.default_table_name)`).\n    - Returns `True` if the integer document ID exists or if the callable query matches at least one document in the default table; returns `False` otherwise.\n    - Raises `TypeError` if `item` is neither an integer document ID nor a callable query.\n\n### Test Hooks\n- **Object construction:**\n  - `TinyDB` can be instantiated using `TinyDB(storage=MemoryStorage)` or via the `db` fixture in `tests/conftest.py`.\n  - Named tables can be accessed via `db.table('<name>')` (e.g. `db.table('users')`).\n- **Imports:**\n  - `from tinydb import TinyDB, where, Query`\n  - `from tinydb.storages import MemoryStorage, JSONStorage`\n  - `import pytest`\n- **Setup & Operations:**\n  - `db.insert({'name': 'alice'})` inserts into the default table and returns document ID 1.\n  - `table = db.table('users'); table.insert({'name': 'bob'})` inserts into a named table.\n  - `db.remove(doc_ids=[1])` removes document 1.\n  - Queries: `where('int') == 1` or `Query().int == 1`.\n  - Membership syntax: `1 in db`, `1 in table`, `(where('int') == 1) in db`.\n  - Type error assertion: `with pytest.raises(TypeError): {'name': 'alice'} in db`.\n\n---\n\n## Acceptance Criteria Traceability\n\n- **AC-1** (`1 in db == True` after insert): Handled by `TinyDB.__contains__` forwarding to `Table.__contains__` returning `True` via `contains(doc_id=1)`.\n- **AC-2** (`1 in db == False` after remove): Handled by `TinyDB.__contains__` forwarding to `Table.__contains__` returning `False` via `contains(doc_id=1)` after removal.\n- **AC-3** (`(where('int') == 1) in db == True` when matching doc exists): Handled by `TinyDB.__contains__` forwarding to `Table.__contains__` returning `True` via `contains(cond=query)`.\n- **AC-4** (`(where('int') == 2) in db == False` when no doc matches): Handled by `TinyDB.__contains__` forwarding to `Table.__contains__` returning `False` via `contains(cond=query)`.\n- **AC-5** (`{'name': 'alice'} in db` raises `TypeError`): Handled by `Table.__contains__` raising `TypeError` for non-int non-callable operands; forwarded from `TinyDB.__contains__`.\n- **AC-6** (`1 in db.table('users') == True` on named table): Handled directly by `Table.__contains__` on the named table instance.\n\n---\n\n## Architecture Constraints Considered\n\n- **ARCHITECTURE.md \u00a71 Overview:** `TinyDB` exposes default table operations and forwards magic methods (`__len__`, `__iter__`) manually because `__getattr__` does not intercept special dunder methods. Adding `TinyDB.__contains__` directly mirrors this established architecture.\n- **ARCHITECTURE.md \u00a73 Constraint 1 (Import direction):** `Table` does not import `TinyDB` or `database`. `database.py` already imports `Table`. No cross-boundary imports or circular dependencies are introduced.\n- **ARCHITECTURE.md \u00a73 Constraint 2 & 5 (Storage & Doc IDs):** Membership checks are read-only and delegate to existing `Table.contains()`, which uses `Table.get()` and respects string/int document ID translation across storage backends (`JSONStorage`, `MemoryStorage`).\n- **ARCHITECTURE.md \u00a73 Constraint 3 & 4 (Query cache & Hashing):** No storage writes occur, so query cache invalidation is unnecessary. `Table.get(cond)` evaluates conditions without mutating the query cache.\n\n---\n\n## Risks & Mitigations\n\n1. **Boolean as integer sub-type:** In Python, `isinstance(True, int)` evaluates to `True`. Checking `isinstance(item, int) and not isinstance(item, bool)` prevents booleans from being misinterpreted as document IDs (0 or 1), ensuring `True in db` properly raises `TypeError`.\n2. **Query exceptions:** Arbitrary callables passed to `in table` are evaluated as predicates. Any runtime error inside a user callable will propagate naturally, matching TinyDB's existing query evaluation behavior.\n3. **No cache or storage side-effects:** Delegating to `Table.contains()` guarantees that no storage modifications or cache corruptions occur.\n",
+  "public_api": [
+    {
+      "behaviour": "Evaluates membership on the table instance using the `in` operator (`item in table`). If `item` is an integer document ID (`isinstance(item, int)` and not `bool`), returns `True` if a document with that ID exists in the table, and `False` otherwise (equivalent to `table.contains(doc_id=item)`). If the document was previously removed, returns `False`. If `item` is a callable query (`callable(item)`, such as a `QueryInstance` or function), returns `True` if at least one document in the table satisfies the query, and `False` otherwise (equivalent to `table.contains(query)`). If `item` is neither an integer doc ID nor a callable query (e.g. a `dict` document, `bool`, `str`, `list`, `float`, `None`), raises `TypeError`.",
+      "signature": "Table.__contains__(self, item: Any) -> bool"
+    },
+    {
+      "behaviour": "Evaluates membership on the TinyDB database instance using the `in` operator (`item in db`). Forwards the membership test directly to the default table instance (`item in self.table(self.default_table_name)`), behaving identically to `Table.__contains__` on the default table. Returns `True` if the integer document ID exists or if the callable query matches at least one document in the default table; returns `False` otherwise. Raises `TypeError` if `item` is neither an integer document ID nor a callable query.",
+      "signature": "TinyDB.__contains__(self, item: Any) -> bool"
+    }
+  ],
+  "risks": [
+    "Python's bool type is a subclass of int (isinstance(True, int) is True). The implementation must explicitly verify `not isinstance(item, bool)` to ensure booleans are not treated as doc IDs 1/0 and instead raise TypeError as required by REQ-3.",
+    "User-defined callables passed as queries may raise unexpected exceptions during evaluation; these propagate to the caller in accordance with TinyDB's standard query behavior.",
+    "No cache invalidation or storage modification risks exist since membership testing is strictly read-only and delegates to the established `Table.contains()` API."
+  ],
+  "test_hooks": [
+    "Instantiate TinyDB with MemoryStorage (`TinyDB(storage=MemoryStorage)`) or JSONStorage (`TinyDB('path.json', storage=JSONStorage)`), or use the parameterized `db` fixture from `tests/conftest.py`.",
+    "Access named tables via `db.table('<name>')` (e.g. `db.table('users')`).",
+    "Import symbols from `tinydb` (`from tinydb import TinyDB, where, Query`) and `tinydb.storages` (`from tinydb.storages import MemoryStorage, JSONStorage`).",
+    "Populate documents using `db.insert({'name': 'alice'})` or `db.table('users').insert({'name': 'bob'})`. Remove documents using `db.remove(doc_ids=[1])`.",
+    "Construct queries using `where('field') == value` or `Query().field == value`.",
+    "Exercise membership with `item in db` and `item in table`. Verify TypeError using `with pytest.raises(TypeError): <expression> in db`."
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "contested_tests": [],
+  "deviations_from_design": [],
+  "files_changed": [
+    "tinydb/table.py"
+  ],
+  "self_check": "python -m compileall -q tinydb: Success (code 0); import tinydb: Success (code 0); python -m mypy tinydb: Success: no issues found in 10 source files; python -m pytest -q: 228 passed in 0.50s; verified AC-1 through AC-6 directly using fresh MemoryStorage and JSONStorage tables; pycodestyle: 0 errors on modified lines.",
+  "summary": "Updated Table.update and Table.remove in tinydb/table.py to normalize document IDs in explicit doc_ids arguments using self.document_id_class(doc_id). Widened the doc_ids type annotations to Optional[Iterable[Union[int, str]]] and updated the method docstrings to document string ID acceptance. This ensures string IDs match stored integer keys, return affected integer IDs, and skip nonexistent IDs."
+}

@@ -1,0 +1,44 @@
+{
+  "mapping": [
+    {
+      "ac": "AC-1",
+      "tests": [
+        "tests/test_autose_issue_1.py::test_ac1_update_single_string_id",
+        "tests/test_autose_issue_1.py::test_ac1_update_query_cache_invalidation"
+      ]
+    },
+    {
+      "ac": "AC-2",
+      "tests": [
+        "tests/test_autose_issue_1.py::test_ac2_remove_single_string_id",
+        "tests/test_autose_issue_1.py::test_ac2_remove_query_cache_invalidation"
+      ]
+    },
+    {
+      "ac": "AC-3",
+      "tests": [
+        "tests/test_autose_issue_1.py::test_ac3_update_mixed_string_and_int_targets"
+      ]
+    },
+    {
+      "ac": "AC-4",
+      "tests": [
+        "tests/test_autose_issue_1.py::test_ac4_remove_mixed_string_and_int_targets"
+      ]
+    },
+    {
+      "ac": "AC-5",
+      "tests": [
+        "tests/test_autose_issue_1.py::test_ac5_update_all_missing_targets"
+      ]
+    },
+    {
+      "ac": "AC-6",
+      "tests": [
+        "tests/test_autose_issue_1.py::test_ac6_remove_all_missing_targets"
+      ]
+    }
+  ],
+  "notes": "### Pytest Results\nAll 8 new tests in `tests/test_autose_issue_1.py` passed, and all 236 tests in the full test suite passed.\n\n### Acceptance Criteria Coverage\n- **AC-1**: Tested `update({'x': 2}, doc_ids=['1'])` across all four configurations (MemoryStorage default table, MemoryStorage table 'foo', JSONStorage default table, JSONStorage table 'foo') as well as query cache invalidation. Verified return value `[1]`, `type(ret[0]) is int`, document update `{'x': 2}`, and table length 1.\n- **AC-2**: Tested `remove(doc_ids=['1'])` across all four configurations as well as query cache invalidation. Verified return value `[1]`, `type(ret[0]) is int`, `all() == []`, and table length 0.\n- **AC-3**: Tested `update` with mixed existing and missing targets (`['1', 2, '99', 100]`) on documents 1, 2, 3. Verified return list length 2, set `{1, 2}`, int element types, documents 1 and 2 updated to `{'x': 9}`, document 3 unchanged, and table length 3.\n- **AC-4**: Tested `remove` with mixed targets (`['1', 2, '99', 100]`). Verified return list length 2, set `{1, 2}`, int element types, documents 1 and 2 removed (`None`), document 3 unchanged, and table length 1.\n- **AC-5**: Tested `update` with all-missing targets (`['99', 100]`). Verified return value `[]`, no exception, document 1 unchanged, and `all() == [{'x': 1}]`.\n- **AC-6**: Tested `remove` with all-missing targets (`['99', 100]`). Verified return value `[]`, no exception, document 1 unchanged, and `all() == [{'x': 1}]`.",
+  "test_file": "tests/test_autose_issue_1.py"
+}

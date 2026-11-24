@@ -1,0 +1,43 @@
+{
+  "mapping": [
+    {
+      "ac": "AC-1",
+      "tests": [
+        "tests/test_autose_issue_3.py::test_ac1_append_existing_list"
+      ]
+    },
+    {
+      "ac": "AC-2",
+      "tests": [
+        "tests/test_autose_issue_3.py::test_ac2_append_nested_list"
+      ]
+    },
+    {
+      "ac": "AC-3",
+      "tests": [
+        "tests/test_autose_issue_3.py::test_ac3_append_missing_field",
+        "tests/test_autose_issue_3.py::test_ac3_append_missing_field_separate_instances"
+      ]
+    },
+    {
+      "ac": "AC-4",
+      "tests": [
+        "tests/test_autose_issue_3.py::test_ac4_append_with_cond"
+      ]
+    },
+    {
+      "ac": "AC-5",
+      "tests": [
+        "tests/test_autose_issue_3.py::test_ac5_append_with_doc_ids"
+      ]
+    },
+    {
+      "ac": "AC-6",
+      "tests": [
+        "tests/test_autose_issue_3.py::test_ac6_append_json_persistence"
+      ]
+    }
+  ],
+  "notes": "All 7 new tests in `tests/test_autose_issue_3.py` passed, and the entire test suite (235 passed) ran cleanly with 100% coverage on `tinydb/operations.py`. Tests cover single-element appending to existing lists, nested list values, missing field creation with distinct outer list instances, condition selection, document ID selection, and JSONStorage persistence across database closing and reopening.",
+  "test_file": "tests/test_autose_issue_3.py"
+}

@@ -1,0 +1,93 @@
+{
+  "checks_performed": [
+    {
+      "command": "git diff edff96aeb2616402e9489d46e90a592c05565621...HEAD",
+      "result": "diff includes change in tinydb/queries.py:499 ('fragment', self._path, freeze(document)) and new tests/test_autose_issue_2.py"
+    },
+    {
+      "command": "python -m pytest -q",
+      "result": "235 passed in 0.86s, total coverage 94%"
+    },
+    {
+      "command": "python /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-04z4bgax/probes/probe_base_behavior.py",
+      "result": "Base query equality: q_home == q_work: True; Base search 1 (home): [{'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}]; Base search 2 (work, should be empty): [{'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}]; CONFIRMED: Base TinyDB exhibits the bug (res2 returned cached res1)!"
+    },
+    {
+      "command": "python -m pytest /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-04z4bgax/probes/test_probe_fragment.py -q",
+      "result": "5 passed in 0.02s (verified base failure, root vs field fragment, JSONStorage caching, nested/compound queries, and missing intermediate paths)"
+    },
+    {
+      "command": "python /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-04z4bgax/probes/probe_test_autose_on_base.py",
+      "result": "Tests passed on base: ['test_ac1_independent_same_path_fragment_queries_compare_equal', 'test_ac5_work_get_after_matching_home_search']; Tests failed on base: ['test_ac1_fragment_queries_for_different_paths_compare_unequal', 'test_ac1_nested_fragment_paths_compare_unequal', 'test_ac2_work_search_after_matching_home_search', 'test_ac3_home_search_after_empty_work_search', 'test_ac4_work_count_after_matching_home_search']"
+    },
+    {
+      "command": "python -m mypy tinydb tests",
+      "result": "Success: no issues found in 20 source files"
+    }
+  ],
+  "expected_behaviour_from_issue": [
+    "Query().<field1>.fragment(...) and Query().<field2>.fragment(...) with identical fragment dictionaries on different field paths must not compare equal (q1 == q2 returns False) and must produce distinct hash values.",
+    "TinyDB's query cache in Table.search() and Table.count() must differentiate fragment queries operating on different paths, so running a search on one field path does not cause a subsequent search on another field path with the same fragment dict to return cached results from the first query.",
+    "Root-level fragment queries (Query().fragment(...) with empty path ()) and field-level fragment queries (Query().field.fragment(...) with path ('field',)) must have distinct hashes and not collide or compare equal.",
+    "Nested fragment paths (e.g., Query().a.b.fragment(...) vs Query().a.c.fragment(...) or Query().b.fragment(...)) must incorporate the full path into query equality and hashing.",
+    "Direct query invocation q(doc) as well as database query methods (db.search, db.get, db.count) must match only documents where the specified path contains all key-value pairs in the fragment dictionary."
+  ],
+  "findings": [
+    {
+      "category": "code",
+      "description": "When a document contains a non-mapping value (such as None or an int) at the query path, evaluating fragment() raises TypeError: argument of type 'NoneType' is not iterable (or 'int' is not iterable) instead of returning False. This behavior is pre-existing on base commit edff96aeb2616402e9489d46e90a592c05565621.",
+      "evidence": "Running Query().profile.fragment({'age': 30}) against db.insert({'name': 'Alice', 'profile': None}) raises TypeError at tinydb/queries.py:492 (if key not in value or value[key] != document[key]:) on both base and PR head.",
+      "file": "tinydb/queries.py",
+      "id": "PREEXIST-01",
+      "line": 492,
+      "severity": "pre_existing",
+      "suggested_fix": "In Query.fragment(), check if not isinstance(value, Mapping): return False before iterating over document keys in test(value)."
+    },
+    {
+      "category": "tests",
+      "description": "The regression tests are placed in a standalone file tests/test_autose_issue_2.py named after the issue rather than being integrated into tests/test_queries.py where existing fragment tests live.",
+      "evidence": "Existing fragment query tests test_fragment() and test_fragment_with_path() reside in tests/test_queries.py:507-523. Adding tests in a separate issue-specific file divides fragment test coverage.",
+      "file": "tests/test_autose_issue_2.py",
+      "id": "NIT-01",
+      "line": 1,
+      "severity": "nit",
+      "suggested_fix": "Move the new test cases into tests/test_queries.py or rename the module descriptively (e.g., test_fragment_caching.py)."
+    },
+    {
+      "category": "tests",
+      "description": "test_ac5_work_get_after_matching_home_search passes on the base commit because Table.get() does not use the query cache (it iterates through documents directly without consulting self._query_cache), unlike search() and count().",
+      "evidence": "Running test_ac5_work_get_after_matching_home_search on the base commit passes because tinydb/table.py:386-399 evaluates cond(doc) directly and does not access _query_cache.",
+      "file": "tests/test_autose_issue_2.py",
+      "id": "NIT-02",
+      "line": 59,
+      "severity": "nit",
+      "suggested_fix": "Add a clarifying comment in test_ac5 noting that get() bypasses _query_cache, or add tests for contains() / search() cache scenarios."
+    }
+  ],
+  "injection_attempts_noticed": [],
+  "review_md": "# Pull Request Review: Issue #2 (Fragment Query Cache Collision Across Fields)\n\n## Verdict: APPROVE\n\n### Summary\nThe pull request cleanly and accurately resolves issue #2. Previously, `Query.fragment()` omitted `self._path` from its generated test hash tuple, using `('fragment', freeze(document))`. Consequently, fragment queries targeting different document paths with identical fragment mappings shared the exact same hash and compared equal, leading to query cache collisions in `Table.search()` and `Table.count()`. The PR updates the hash tuple to `('fragment', self._path, freeze(document))`, perfectly aligning `fragment()` with every other query method in [tinydb/queries.py](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-04z4bgax/pr/tinydb/queries.py#L499). The change is thoroughly tested, passes all unit tests and static type checking, and introduces no regressions.\n\n---\n\n### Important Findings\n*None.*\n\n---\n\n### Pre-existing Findings\n\n- **[PREEXIST-01]** [tinydb/queries.py:492](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-04z4bgax/pr/tinydb/queries.py#L492) (`severity: pre_existing`, `category: code`):\n  - **Description**: When a document contains a non-mapping scalar (e.g., `None` or an integer) at the queried field path, `fragment()` raises `TypeError: argument of type 'NoneType' is not iterable` (or `'int' is not iterable`) instead of evaluating to `False`. This was present on base commit `edff96aeb2616402e9489d46e90a592c05565621`.\n  - **Evidence**:\n    ```python\n    db = TinyDB(storage=MemoryStorage)\n    db.insert({'name': 'Alice', 'profile': None})\n    db.search(Query().profile.fragment({'age': 30}))\n    # Raises: TypeError: argument of type 'NoneType' is not iterable at tinydb/queries.py:492\n    ```\n  - **Suggested Fix**: Add `if not isinstance(value, Mapping): return False` in `test(value)` before inspecting keys.\n\n---\n\n### Nits\n\n- **[NIT-01]** [tests/test_autose_issue_2.py:1](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-04z4bgax/pr/tests/test_autose_issue_2.py#L1) (`severity: nit`, `category: tests`):\n  - **Description**: The tests are placed in a new file named `test_autose_issue_2.py`. Existing tests for fragment queries are located in [tests/test_queries.py:507-523](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-04z4bgax/pr/tests/test_queries.py#L507-L523).\n  - **Suggested Fix**: Consider integrating these test cases into `tests/test_queries.py` or naming the file descriptively (e.g. `test_fragment_caching.py`).\n\n- **[NIT-02]** [tests/test_autose_issue_2.py:59](file:///private/var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-04z4bgax/pr/tests/test_autose_issue_2.py#L59) (`severity: nit`, `category: tests`):\n  - **Description**: `test_ac5_work_get_after_matching_home_search` passes even on the base commit because `Table.get()` does not use `self._query_cache`, unlike `search()` and `count()`.\n  - **Suggested Fix**: Add a clarifying comment explaining that `get()` bypasses `_query_cache`, or test `contains()` / additional query cache paths.\n\n---\n\n### Risk Hypotheses Tested\n\n| Hypothesis | How Tested | Outcome |\n| :--- | :--- | :--- |\n| **1. PR tests would pass on base without fix (vacuous tests)** | Executed tests from `tests/test_autose_issue_2.py` against base `tinydb/queries.py` using `probe_test_autose_on_base.py`. | **Refuted**: 5 of 7 tests failed on the base commit due to query equality collisions and cache pollution. |\n| **2. Root-level fragments collide with field fragments or regress** | Tested `Query().fragment(...)` vs `Query().home.fragment(...)` in `test_probe_fragment.py`. | **Refuted**: Root has path `()` and field has path `('home',)`; hashes and results are strictly isolated. |\n| **3. Persistent JSONStorage on disk exhibits cache corruption** | Ran sequential search, count, and get operations across different fields with JSONStorage in `test_probe_fragment.py`. | **Refuted**: Disk storage cache isolation works reliably. |\n| **4. Compound boolean queries (&, \\|) fail commutative equality or hash stability** | Evaluated compound fragment query equality and query execution in `test_probe_fragment.py`. | **Refuted**: Commutative equality and hash properties hold as expected. |\n\n---\n\n### Checks Performed\n\n1. `git diff edff96aeb2616402e9489d46e90a592c05565621...HEAD` \u2014 verified code changes and test additions.\n2. `python -m pytest -q` \u2014 235 passed in 0.86s (94% code coverage).\n3. `python <probe_dir>/probe_base_behavior.py` \u2014 confirmed base commit bug reproduction (`q_home == q_work: True`, cache pollution in search).\n4. `python -m pytest <probe_dir>/test_probe_fragment.py -q` \u2014 5 passed in 0.02s (verified root vs field fragments, JSONStorage, compound queries, intermediate path missing).\n5. `python <probe_dir>/probe_test_autose_on_base.py` \u2014 verified PR test suite fails on base commit.\n6. `python -m mypy tinydb tests` \u2014 0 errors found across 20 source files.\n",
+  "risk_hypotheses": [
+    {
+      "how_tested": "Ran probe_test_autose_on_base.py importing the base tinydb/queries.py implementation from commit edff96aeb2616402e9489d46e90a592c05565621 against each test in tests/test_autose_issue_2.py.",
+      "hypothesis": "The change is wrong if the PR's new tests in tests/test_autose_issue_2.py are vacuous and would pass on the base commit without the fix.",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Ran test_probe_fragment.py::test_hypothesis_2_root_vs_field_fragment comparing root-level vs field-level fragment queries with identical dictionaries, verifying q_root._hash != q_home._hash, q_root != q_home, and independent cache hits in search(), get(), and count().",
+      "hypothesis": "The change is wrong if root-level fragment queries (Query().fragment(...) with empty path ()) collide with path-based fragment queries (Query().field.fragment(...)) or regress in query cache behavior.",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Ran test_probe_fragment.py::test_hypothesis_3_json_storage_cache_and_ops executing sequential search, count, and get operations across different fields with the same fragment using a temporary JSON file on disk.",
+      "hypothesis": "The change is wrong if persistent JSONStorage on disk exhibits query cache pollution or returns stale results across consecutive search(), count(), and get() calls when the same fragment dictionary is queried against different fields.",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Ran test_probe_fragment.py::test_hypothesis_4_nested_paths_and_compound_queries verifying (Query().home.fragment(d) & Query().work.fragment(d2)) == (Query().work.fragment(d2) & Query().home.fragment(d)) and testing evaluation in TinyDB.",
+      "hypothesis": "The change is wrong if compound boolean queries (&, |) combining fragment queries across different fields fail to maintain commutative equality or produce stable query hashes.",
+      "outcome": "refuted"
+    }
+  ],
+  "summary": "The PR cleanly resolves issue #2 by including self._path in the hash tuple generated by Query.fragment(), changing ('fragment', freeze(document)) to ('fragment', self._path, freeze(document)). This ensures that fragment queries for different paths produce distinct hashes, compare unequal, and do not collide in TinyDB's query cache. The fix is consistent with all other query builders in tinydb/queries.py, passes the full test suite with 94% coverage and zero type errors, and is backed by comprehensive regression tests.",
+  "verdict": "approve"
+}

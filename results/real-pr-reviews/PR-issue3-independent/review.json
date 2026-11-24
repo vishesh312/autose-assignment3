@@ -1,0 +1,72 @@
+{
+  "checks_performed": [
+    {
+      "command": "python -m pytest -q",
+      "result": "234 passed in 0.76s (100% coverage on tinydb/operations.py)"
+    },
+    {
+      "command": "python -m pytest /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-t0leohva/probes/test_probe_append.py -q",
+      "result": "5 passed in 0.05s"
+    },
+    {
+      "command": "python /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-t0leohva/probes/probe_base_behavior.py",
+      "result": "CONFIRMED: Base ref tinydb/operations.py does NOT have append function\nCONFIRMED: AttributeError - append does not exist on base ref"
+    }
+  ],
+  "expected_behaviour_from_issue": [
+    "`append(field: str, value: Any)` operation provided in `tinydb.operations` returning a transform callable `(MutableMapping) -> None` compatible with `Table.update`.",
+    "Appends `value` as a single element to `doc[field]` when the list field exists (e.g. `['bug']` becomes `['bug', 'urgent']`).",
+    "Appends nested lists as a single element rather than extending (e.g. `append('tags', ['a', 'b'])` results in `[['a', 'b']]`).",
+    "Creates a new single-element list `[value]` if `field` is not present in the document, avoiding a KeyError.",
+    "Works seamlessly with both `cond` (query condition) and `doc_ids=` targeting in `Table.update`.",
+    "Changes made using `append` are persisted to storage (such as `JSONStorage` on disk) and survive database reopens."
+  ],
+  "findings": [
+    {
+      "category": "code",
+      "description": "`docs/usage.rst` lists available built-in operations (delete, increment, decrement, add, subtract, set) but was not updated to include `append(key, value)`.",
+      "evidence": "Lines 310-318 of docs/usage.rst list operations without mentioning append:\n- ``delete(key)``: delete a key from the document\n- ``increment(key)``: increment the value of a key\n...\n- ``set(key, value)``: set ``key`` to ``value``",
+      "file": "docs/usage.rst",
+      "id": "DOCS-USAGE-RST-MISSING-APPEND",
+      "line": 310,
+      "severity": "nit",
+      "suggested_fix": "Add `- ``append(key, value)``: append ``value`` to the list value of a key (or create a one-element list if missing)` to docs/usage.rst."
+    },
+    {
+      "category": "tests",
+      "description": "The PR tests `append` via a standalone test file `tests/test_autose_issue_3.py` rather than adding a test case into `tests/test_operations.py` alongside other operation unit tests.",
+      "evidence": "`tests/test_operations.py` contains tests for delete, add, subtract, set, increment, and decrement, but no test for append.",
+      "file": "tests/test_operations.py",
+      "id": "TESTS-SUITE-CONSOLIDATION",
+      "line": 37,
+      "severity": "nit",
+      "suggested_fix": "Add an `append` test to `tests/test_operations.py` in addition to or consolidating with `tests/test_autose_issue_3.py`."
+    }
+  ],
+  "injection_attempts_noticed": [],
+  "review_md": "# Code Review: Feature request `append` operation for list fields\n\n## Verdict: APPROVE\n\n### Summary\nThis pull request implements the requested `append` operation in `tinydb.operations`, allowing users to append a value to an existing list field or initialize a missing field as a single-element list. The implementation follows TinyDB's architectural conventions, integrates cleanly with `Table.update`, preserves full persistence across storage backends (`JSONStorage` and `MemoryStorage`), and correctly triggers query cache invalidation. All existing tests pass along with six targeted tests covering condition matching, ID targeting, nested list handling, and persistence across reloads.\n\n### Important Findings\nNone.\n\n### Pre-existing Findings\nNone.\n\n### Nits\n1. **`docs/usage.rst:310` (`DOCS-USAGE-RST-MISSING-APPEND`)**: `docs/usage.rst` lists the available built-in operations (`delete`, `increment`, `decrement`, `add`, `subtract`, `set`) but was not updated to document `append(key, value)`.\n2. **`tests/test_operations.py:37` (`TESTS-SUITE-CONSOLIDATION`)**: Tests for `append` were added in a new file `tests/test_autose_issue_3.py`. Adding a test case to `tests/test_operations.py` as well would keep the operations test module complete.\n\n### Risk Hypotheses Tested\n- **Hypothesis 1**: The change is wrong if updating multiple documents lacking the target field causes them to share mutable list references.\n  - *How tested*: Ran probe test `test_independent_list_instances` in `test_probe_append.py`, verifying that multiple documents updated with `append` receive independent list instances.\n  - *Outcome*: Refuted.\n- **Hypothesis 2**: The change is wrong if updates using `append` bypass query cache invalidation, causing repeated searches to return stale data.\n  - *How tested*: Ran probe test `test_query_cache_invalidation` in `test_probe_append.py`, caching an empty search result before updating via `append`, then verifying the search returned the updated document.\n  - *Outcome*: Refuted.\n- **Hypothesis 3**: The change is wrong if the new test suite passes on the base ref without the PR's implementation of `append` (vacuous tests).\n  - *How tested*: Ran probe script `probe_base_behavior.py` against base commit `edff96aeb2616402e9489d46e90a592c05565621`, confirming `append` did not exist and tests would fail.\n  - *Outcome*: Refuted.\n- **Hypothesis 4**: The change is wrong if `append` fails when executed in `Table.update_multiple` alongside other operations.\n  - *How tested*: Ran probe test `test_update_multiple` in `test_probe_append.py` executing `append` and `set` within a single `update_multiple` call.\n  - *Outcome*: Refuted.\n\n### Checks Performed\n- `python -m pytest -q`: 234 passed in 0.76s (100% test coverage on `tinydb/operations.py`).\n- `python -m pytest /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-t0leohva/probes/test_probe_append.py -q`: 5 passed in 0.05s.\n- `python /var/folders/3q/2m8v425s7p39t7qxjp0kcdw80000gn/T/autose-review-t0leohva/probes/probe_base_behavior.py`: Confirmed base ref lacked `append`.\n",
+  "risk_hypotheses": [
+    {
+      "how_tested": "Ran probe test test_independent_list_instances in test_probe_append.py, verifying that multiple documents updated with append receive independent list instances.",
+      "hypothesis": "The change is wrong if updating multiple documents lacking the target field causes them to share mutable list references.",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Ran probe test test_query_cache_invalidation in test_probe_append.py, caching an empty search result before updating via append, then verifying the search returned the updated document.",
+      "hypothesis": "The change is wrong if updates using append bypass query cache invalidation, causing repeated searches to return stale data.",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Ran probe script probe_base_behavior.py against base commit edff96aeb2616402e9489d46e90a592c05565621, confirming append did not exist and tests would fail.",
+      "hypothesis": "The change is wrong if the new test suite passes on the base ref without the PR's implementation of append (vacuous tests).",
+      "outcome": "refuted"
+    },
+    {
+      "how_tested": "Ran probe test test_update_multiple in test_probe_append.py executing append and set within a single update_multiple call.",
+      "hypothesis": "The change is wrong if append fails when executed in Table.update_multiple alongside other operations.",
+      "outcome": "refuted"
+    }
+  ],
+  "summary": "This pull request implements the requested append operation in tinydb.operations, allowing users to append a value to an existing list field or initialize a missing field as a single-element list. The implementation adheres to TinyDB's architectural conventions, integrates seamlessly with Table.update, and correctly invalidates the query cache on updates. All existing tests pass along with six targeted tests covering condition matching, ID targeting, nested list values, and persistence across reloads.",
+  "verdict": "approve"
+}

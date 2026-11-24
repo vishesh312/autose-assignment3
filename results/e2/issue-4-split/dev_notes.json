@@ -1,0 +1,9 @@
+{
+  "contested_tests": [],
+  "deviations_from_design": [],
+  "files_changed": [
+    "tinydb/table.py"
+  ],
+  "self_check": "python -m compileall -q tinydb: Success, no output (clean compilation); python -c 'import tinydb': Success; python -m mypy tinydb: Success: no issues found in 10 source files; python -m pytest -q: 228 passed in 0.48s; acceptance criteria verification: AC-1 through AC-6 passed; git status: only tinydb/table.py modified.",
+  "summary": "Added an optional `limit: Optional[int] = None` parameter to `Table.search` in `tinydb/table.py`. On both query cache hits and misses, returned matches are sliced with `[:limit]`, returning at most `limit` documents in document ID order (or all matches when `limit` is None or exceeds total matches). The query cache continues to store the complete unconstrained match list for cacheable queries, preserving cache isolation between queries with different limits or without limit."
+}

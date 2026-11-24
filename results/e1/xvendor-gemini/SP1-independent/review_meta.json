@@ -1,0 +1,14 @@
+{
+  "issue": 1,
+  "round": 1,
+  "head_sha": "15c480478c83ef433efba2b204c804a202e2c135",
+  "base_ref": "edff96aeb2616402e9489d46e90a592c05565621",
+  "variant": "independent",
+  "model": "gemini-3.8-flash-high",
+  "valid": true,
+  "problems": [],
+  "cost_usd": 0.2764,
+  "reviewer_verdict": "approve",
+  "verification": null,
+  "review_rules": false
+}

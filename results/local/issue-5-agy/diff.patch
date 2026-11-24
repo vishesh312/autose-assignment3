@@ -1,0 +1,66 @@
+diff --git a/tinydb/database.py b/tinydb/database.py
+index 0cd2b7e..d70fc2c 100644
+--- a/tinydb/database.py
++++ b/tinydb/database.py
+@@ -3,6 +3,7 @@ This module contains the main component of TinyDB: the database.
+ """
+ 
+ from collections.abc import Iterator
++from typing import Any
+ 
+ from . import JSONStorage
+ from .storages import Storage
+@@ -272,3 +273,14 @@ class TinyDB(TableBase):
+         Return an iterator for the default table's documents.
+         """
+         return iter(self.table(self.default_table_name))
++
++    def __contains__(self, item: Any) -> bool:
++        """
++        Check if the default table contains a document ID or matches a query.
++
++        :param item: either an integer document ID or a callable query
++        :returns: ``True`` if the document exists or query matches,
++                  ``False`` otherwise
++        :raises TypeError: if item is neither an integer nor a callable query
++        """
++        return item in self.table(self.default_table_name)
+diff --git a/tinydb/table.py b/tinydb/table.py
+index 76470aa..0c380c6 100644
+--- a/tinydb/table.py
++++ b/tinydb/table.py
+@@ -5,6 +5,7 @@ data in TinyDB.
+ 
+ from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping
+ from typing import (
++    Any,
+     NoReturn,
+     Optional,
+     Union,
+@@ -741,6 +742,26 @@ class Table:
+             # Convert documents to the document class
+             yield self.document_class(doc, self.document_id_class(doc_id))
+ 
++    def __contains__(self, item: Any) -> bool:
++        """
++        Check if the table contains a document ID or matches a query.
++
++        :param item: either an integer document ID or a callable query
++        :returns: ``True`` if the document exists or query matches,
++                  ``False`` otherwise
++        :raises TypeError: if item is neither an integer nor a callable query
++        """
++        if isinstance(item, int) and not isinstance(item, bool):
++            return self.contains(doc_id=item)
++        elif callable(item):
++            return self.contains(cond=item)
++        else:
++            raise TypeError(
++                f'Invalid operand for membership test: '
++                f'expected int (doc_id) or callable (query), '
++                f'got {type(item).__name__}'
++            )
++
+     def _get_next_id(self):
+         """
+         Return the ID for a newly inserted document.

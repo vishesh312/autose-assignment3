@@ -1,0 +1,9 @@
+{
+  "contested_tests": [],
+  "deviations_from_design": [],
+  "files_changed": [
+    "tinydb/queries.py"
+  ],
+  "self_check": "python -m compileall -q tinydb: Success; python -c 'import tinydb': Success; python -m mypy tinydb: Success: no issues found in 10 source files; python -m pytest -q: 228 passed in 0.78s; manual AC verification: AC-1 through AC-5 passed.",
+  "summary": "Updated Query.fragment in tinydb/queries.py to include self._path in the query identity tuple: ('fragment', self._path, freeze(document)). This ensures fragment queries on different field paths compare unequal and maintain distinct cache keys for Table query caching, fixing cache collisions in search, count, and get operations."
+}

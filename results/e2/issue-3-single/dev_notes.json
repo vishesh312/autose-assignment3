@@ -1,0 +1,10 @@
+{
+  "contested_tests": [],
+  "deviations_from_design": [],
+  "files_changed": [
+    "tinydb/operations.py",
+    "tests/test_autose_issue_3.py"
+  ],
+  "self_check": "Ran `python -m compileall -q tinydb` (passed with code 0). Ran `python -m mypy tinydb` (success, no issues found in 10 source files). Ran `python -m pytest tests/test_autose_issue_3.py` (7 passed in 0.18s). Ran `python -m pytest -q` (full suite: 235 passed in 0.47s with 100% coverage on tinydb/operations.py). Ran `git diff` and `git status` confirming only tinydb/operations.py and tests/test_autose_issue_3.py were modified/added, respecting all forbidden path boundaries.",
+  "summary": "Implemented the `append` update operation in `tinydb.operations` for appending values to list fields in TinyDB documents. If the field exists, `append` adds the value as a single element to the end of the list; if absent, it initializes the field with a fresh single-element list. Added comprehensive acceptance tests in `tests/test_autose_issue_3.py` verifying criteria AC-1 through AC-6."
+}

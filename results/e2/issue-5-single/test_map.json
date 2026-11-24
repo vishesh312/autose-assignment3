@@ -1,0 +1,42 @@
+{
+  "mapping": [
+    {
+      "ac": "AC-1",
+      "tests": [
+        "tests/test_autose_issue_5.py::test_ac1_doc_id_exists"
+      ]
+    },
+    {
+      "ac": "AC-2",
+      "tests": [
+        "tests/test_autose_issue_5.py::test_ac2_doc_id_removed"
+      ]
+    },
+    {
+      "ac": "AC-3",
+      "tests": [
+        "tests/test_autose_issue_5.py::test_ac3_query_matches"
+      ]
+    },
+    {
+      "ac": "AC-4",
+      "tests": [
+        "tests/test_autose_issue_5.py::test_ac4_query_no_match"
+      ]
+    },
+    {
+      "ac": "AC-5",
+      "tests": [
+        "tests/test_autose_issue_5.py::test_ac5_invalid_operand_type_error"
+      ]
+    },
+    {
+      "ac": "AC-6",
+      "tests": [
+        "tests/test_autose_issue_5.py::test_ac6_named_table_membership"
+      ]
+    }
+  ],
+  "notes": "All 6 tests in tests/test_autose_issue_5.py passed, and all 234 tests in the full test suite passed. Each acceptance criterion is directly covered by dedicated tests verifying document ID membership, query membership, TypeError enforcement for non-int/non-callable types (including bools, dicts, lists, and floats), and delegation on named tables as well as default database tables.",
+  "test_file": "tests/test_autose_issue_5.py"
+}

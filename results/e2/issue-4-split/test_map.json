@@ -1,0 +1,47 @@
+{
+  "mapping": [
+    {
+      "ac": "AC-1",
+      "tests": [
+        "tests/test_autose_issue_4.py::test_ac1_limit_returns_first_matching_docs_in_order",
+        "tests/test_autose_issue_4.py::test_ac1_limit_interspersed_matches"
+      ]
+    },
+    {
+      "ac": "AC-2",
+      "tests": [
+        "tests/test_autose_issue_4.py::test_ac2_limit_exceeding_total_matches",
+        "tests/test_autose_issue_4.py::test_ac2_limit_equal_total_matches"
+      ]
+    },
+    {
+      "ac": "AC-3",
+      "tests": [
+        "tests/test_autose_issue_4.py::test_ac3_limit_zero_returns_empty_list",
+        "tests/test_autose_issue_4.py::test_ac3_limit_zero_on_empty_table"
+      ]
+    },
+    {
+      "ac": "AC-4",
+      "tests": [
+        "tests/test_autose_issue_4.py::test_ac4_limit_none_and_omitted_return_all_matches"
+      ]
+    },
+    {
+      "ac": "AC-5",
+      "tests": [
+        "tests/test_autose_issue_4.py::test_ac5_named_table_search_with_limit"
+      ]
+    },
+    {
+      "ac": "AC-6",
+      "tests": [
+        "tests/test_autose_issue_4.py::test_ac6_query_cache_isolation_and_no_leakage",
+        "tests/test_autose_issue_4.py::test_ac6_cache_unlimited_then_limited_then_unlimited",
+        "tests/test_autose_issue_4.py::test_ac6_returned_lists_are_fresh_copies"
+      ]
+    }
+  ],
+  "notes": "### Pytest Results\n- `python -m pytest tests/test_autose_issue_4.py -q`: 11 passed in 0.15s.\n- `python -m pytest -q`: 239 passed in 0.67s.\n\n### Test Coverage & Criteria Mapping\n- **AC-1**: Verified `search(where(...), limit=2)` returns first 2 documents in insertion/doc_id order (`test_ac1_limit_returns_first_matching_docs_in_order`, `test_ac1_limit_interspersed_matches`).\n- **AC-2**: Verified `limit` exceeding total matches or equal to total matches returns all matches without error or truncation (`test_ac2_limit_exceeding_total_matches`, `test_ac2_limit_equal_total_matches`).\n- **AC-3**: Verified `limit=0` returns an empty list (`test_ac3_limit_zero_returns_empty_list`, `test_ac3_limit_zero_on_empty_table`).\n- **AC-4**: Verified `limit=None` preserves default search behavior returning all matches (`test_ac4_limit_none_and_omitted_return_all_matches`).\n- **AC-5**: Verified table-specific search with limit returns the matching documents from that table (`test_ac5_named_table_search_with_limit`).\n- **AC-6**: Verified query cache isolation across searches on the same query condition with varying limits and unconstrained queries, ensuring fresh copies and no truncation leakage (`test_ac6_query_cache_isolation_and_no_leakage`, `test_ac6_cache_unlimited_then_limited_then_unlimited`, `test_ac6_returned_lists_are_fresh_copies`).\n\n### Failing Tests & Discrepancies\n- None. All 11 tests passed on the current implementation.\n\n### Contested Tests & Ambiguities\n- No contested tests were present.\n- Criteria were unambiguous and adhered to strictly.\n",
+  "test_file": "tests/test_autose_issue_4.py"
+}

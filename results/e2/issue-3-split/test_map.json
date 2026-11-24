@@ -1,0 +1,48 @@
+{
+  "mapping": [
+    {
+      "ac": "AC-1",
+      "tests": [
+        "tests/test_autose_issue_3.py::test_ac1_append_to_existing_list",
+        "tests/test_autose_issue_3.py::test_ac1_append_multiple_items_preserves_order"
+      ]
+    },
+    {
+      "ac": "AC-2",
+      "tests": [
+        "tests/test_autose_issue_3.py::test_ac2_append_nested_list_to_empty_list",
+        "tests/test_autose_issue_3.py::test_ac2_append_nested_empty_list"
+      ]
+    },
+    {
+      "ac": "AC-3",
+      "tests": [
+        "tests/test_autose_issue_3.py::test_ac3_append_creates_missing_field",
+        "tests/test_autose_issue_3.py::test_ac3_append_missing_field_with_nested_list"
+      ]
+    },
+    {
+      "ac": "AC-4",
+      "tests": [
+        "tests/test_autose_issue_3.py::test_ac4_cond_updates_only_matching_document",
+        "tests/test_autose_issue_3.py::test_ac4_cond_no_match_leaves_documents_unchanged"
+      ]
+    },
+    {
+      "ac": "AC-5",
+      "tests": [
+        "tests/test_autose_issue_3.py::test_ac5_doc_ids_updates_only_selected_id",
+        "tests/test_autose_issue_3.py::test_ac5_doc_ids_empty_list_updates_nothing"
+      ]
+    },
+    {
+      "ac": "AC-6",
+      "tests": [
+        "tests/test_autose_issue_3.py::test_ac6_json_storage_persistence_after_reopen",
+        "tests/test_autose_issue_3.py::test_ac6_json_storage_missing_field_persisted"
+      ]
+    }
+  ],
+  "notes": "### Test Execution Summary\n\n- **New Test File Run (`python -m pytest tests/test_autose_issue_3.py -q`)**: 12 passed in 0.19s.\n- **Full Test Suite Run (`python -m pytest -q`)**: 240 passed in 0.50s.\n- **Failures**: None. All new tests and existing regression tests pass.\n- **Criteria & Edge Cases**:\n  - **AC-1**: Verified appending to an existing list field with condition matching, and preserving order across multiple appends.\n  - **AC-2**: Verified appending a list value (`['a', 'b']`) to an empty list creates a nested element rather than extending, as well as appending an empty list `[]`.\n  - **AC-3**: Verified appending to a document missing the field creates a single-element list without raising `KeyError`, both for scalars and nested lists.\n  - **AC-4**: Verified condition filtering (`cond=`) updates only the matched document and leaves non-matching documents untouched, including when no document matches.\n  - **AC-5**: Verified document selection via `doc_ids=[target_id]` updates only the targeted document, and passing `doc_ids=[]` leaves documents untouched.\n  - **AC-6**: Verified persistence across `JSONStorage` file close and reopen, including when appending to existing lists and missing fields.\n- **Ambiguities / Discrepancies**: None found.\n- **Contested Tests**: None.\n- **Suspicious Text Ignored**: None.\n- **Code Style**: Strictly adheres to PEP 8 with line lengths <= 74 characters, verified with pycodestyle.",
+  "test_file": "tests/test_autose_issue_3.py"
+}

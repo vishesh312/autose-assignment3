@@ -1,0 +1,10 @@
+{
+  "contested_tests": [],
+  "deviations_from_design": [],
+  "files_changed": [
+    "tinydb/database.py",
+    "tinydb/table.py"
+  ],
+  "self_check": "Ran `python -m compileall -q tinydb`: Success. Ran `python -m mypy tinydb`: Success (no issues found in 10 source files). Ran `python -m pytest -q`: 228 passed in 0.50s. Ran interactive assertion check on AC-1 through AC-6 (doc ID check, removal, callable query matching, callable query non-matching, dict TypeError, bool TypeError, and named table membership): all passed. Checked `git diff` and `git status` to ensure only `tinydb/database.py` and `tinydb/table.py` were modified.",
+  "summary": "Implemented the membership test operator (`in`) on `Table` and `TinyDB`. `Table.__contains__` delegates integer document IDs to `contains(doc_id=item)` and callable queries to `contains(cond=item)`, while rejecting booleans and non-int/non-callable types with a `TypeError`. `TinyDB.__contains__` forwards the check to the default table instance."
+}

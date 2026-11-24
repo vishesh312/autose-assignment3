@@ -1,0 +1,37 @@
+{
+  "mapping": [
+    {
+      "ac": "AC-1",
+      "tests": [
+        "tests/test_autose_issue_2.py::test_ac1_different_paths_compare_unequal",
+        "tests/test_autose_issue_2.py::test_ac1_same_path_and_nested_compatibility"
+      ]
+    },
+    {
+      "ac": "AC-2",
+      "tests": [
+        "tests/test_autose_issue_2.py::test_ac2_search_work_after_home"
+      ]
+    },
+    {
+      "ac": "AC-3",
+      "tests": [
+        "tests/test_autose_issue_2.py::test_ac3_search_home_after_work"
+      ]
+    },
+    {
+      "ac": "AC-4",
+      "tests": [
+        "tests/test_autose_issue_2.py::test_ac4_count_work_after_home_search"
+      ]
+    },
+    {
+      "ac": "AC-5",
+      "tests": [
+        "tests/test_autose_issue_2.py::test_ac5_get_work_after_home_search"
+      ]
+    }
+  ],
+  "notes": "All 6 tests in `tests/test_autose_issue_2.py` passed with pytest. Before the implementation change, tests for AC-1 through AC-4 failed on the base commit due to query cache and equality collisions, while AC-5 passed as baseline regression coverage. After incorporating `self._path` into the identity tuple in `Query.fragment`, all tests pass including the full test suite.",
+  "test_file": "tests/test_autose_issue_2.py"
+}

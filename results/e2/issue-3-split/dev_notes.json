@@ -1,0 +1,9 @@
+{
+  "contested_tests": [],
+  "deviations_from_design": [],
+  "files_changed": [
+    "tinydb/operations.py"
+  ],
+  "self_check": "python -m compileall -q tinydb: Success; python -c 'import tinydb; from tinydb.operations import append': Success; python -m mypy tinydb: Success: no issues found in 10 source files; python -m pytest -q: 228 passed in 0.49s; AC-1 through AC-6 verified.",
+  "summary": "Added the append operation factory to tinydb/operations.py. The operation returns an in-place document transformer that appends a value as a single element to an existing list field, or initializes absent fields as a new single-element list. It works seamlessly with TinyDB.update conditions and document IDs, and persists through storage."
+}
