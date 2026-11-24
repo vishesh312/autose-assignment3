@@ -13,7 +13,7 @@ A GitHub Actions workflow in which agents turn a labelled issue on a tinydb fork
 
 ## Architecture in one paragraph
 
-A Python orchestrator (`autose`) runs a **deterministic state machine** through the brief's six stages. It drives five agents, each a separate `claude -p --bare` process with its own prompt, tool allowlist and JSON output schema: **Analyst** (S1, uses the A1 `requirements-spec` skill, read-only), **Architect** (S2, reads the A2 `ARCHITECTURE.md`, read-only), **Developer** (S3, may write only `tinydb/**`), **Tester** (S4, a fresh context that may write only its own test file) and **Reviewer** (S6, a different model in its own tokenless job that cannot push). A single-call Haiku **Judge** checks S1 testability. Release (S5) is plain code with no agent. Every stage check is a deterministic predicate (schema, AST symbol lookup, path allowlists, compile/import/mypy, full suite, and "new tests must fail on base"), and code, not an LLM, decides every transition. Across jobs, the review loop is unrolled into a fixed DAG (`gate → build → round1..3 → finalize`) so one Actions run shows the whole history. Agents hand off only schema-validated artifacts and never transcripts. The Reviewer sees only the issue, the diff and the PR-head checkout. Full design: [`architecture/DESIGN.md`](architecture/DESIGN.md).
+A Python orchestrator (`autose`) runs a **deterministic state machine** through the brief's six stages. It drives five agents, each a separate headless `codex exec` process (OpenAI Codex CLI on a ChatGPT subscription, [ADR-014](architecture/decisions/ADR-014.md)) with its own prompt, OS sandbox mode (read-only, or workspace-write with no network) and JSON output schema: **Analyst** (S1, uses the A1 `requirements-spec` skill, read-only), **Architect** (S2, reads the A2 `ARCHITECTURE.md`, read-only), **Developer** (S3, may write only `tinydb/**`), **Tester** (S4, a fresh context that may write only its own test file) and **Reviewer** (S6, a different model in its own tokenless job that cannot push). A single-call **Judge** checks S1 testability, and a read-only **Verifier** re-checks each blocking review finding in a fresh context before it can send work back ([ADR-015](architecture/decisions/ADR-015.md)). Release (S5) is plain code with no agent. Every stage check is a deterministic predicate (schema, AST symbol lookup, path allowlists, compile/import/mypy, full suite, and "new tests must fail on base"), and code, not an LLM, decides every transition. Across jobs, the review loop is unrolled into a fixed DAG (`gate → build → round1..3 → finalize`) so one Actions run shows the whole history. Agents hand off only schema-validated artifacts and never transcripts. The Reviewer sees only the issue, the diff and the PR-head checkout. Full design: [`architecture/DESIGN.md`](architecture/DESIGN.md).
 
 ## Deliverables map (brief's required layout)
 
@@ -25,7 +25,7 @@ demo.mp4 / link                   TBD(run): see the table above
 architecture/
   DESIGN.md                       whole design in one place (summary of the ADRs)
   views/                          component view, sequence view, stage map (+ state machine)
-  decisions/                      ADR-001 … ADR-013 + README.md index
+  decisions/                      ADR-001 … ADR-015 + README.md index (ADR-011 superseded by ADR-014)
 workflow/                         agent code, prompts, skill, copies of the GitHub workflows
 experiment/
   issues/                         the 5 issue texts (+ maintainer answer for #5)
@@ -45,7 +45,7 @@ results/
 | Stage map (agent, artifact and check per stage) | [`architecture/views/stage-map.md`](architecture/views/stage-map.md) |
 | State machine | [`architecture/views/state-machine.png`](architecture/views/state-machine.png) (source `.mmd`) |
 | ADR index and summary table | [`architecture/decisions/README.md`](architecture/decisions/README.md) |
-| ADRs (13, covering D1–D10 plus 3 extra) | [`architecture/decisions/`](architecture/decisions/) |
+| ADRs (15: D1–D10 in ADR-001…010, plus 5 extra; ADR-011 superseded by ADR-014) | [`architecture/decisions/`](architecture/decisions/) |
 | Orchestrator code, code-to-design map | [`workflow/README.md`](workflow/README.md), [`workflow/autose/`](workflow/autose/) |
 | Prompts and A1 skill | [`workflow/prompts/`](workflow/prompts/) ([README](workflow/prompts/README.md)), [`workflow/skills/requirements-spec/SKILL.md`](workflow/skills/requirements-spec/SKILL.md) |
 | GitHub workflows (copies of the fork's `.github/workflows/`) | [`workflow/github-workflows/`](workflow/github-workflows/): `autose.yml`, `autose-round.yml`, `ci.yml` |
@@ -57,21 +57,23 @@ results/
 
 ## Models
 
-From [DESIGN §7](architecture/DESIGN.md#7-models-adr-006) and [ADR-006](architecture/decisions/ADR-006.md). Each role can be overridden with a repository variable `AUTOSE_MODEL_<ROLE>`.
+From [DESIGN §7](architecture/DESIGN.md#7-models-adr-006-amended-by-adr-014), [ADR-006](architecture/decisions/ADR-006.md) (as amended) and [ADR-014](architecture/decisions/ADR-014.md). Harness: OpenAI Codex CLI pinned to `@openai/codex@0.172.0`, authenticated with a ChatGPT subscription (`AUTOSE_BACKEND=codex`). It supersedes the Claude Code CLI on the Anthropic API of [ADR-011](architecture/decisions/ADR-011.md), which stays selectable with `AUTOSE_BACKEND=claude`. Each role's model can be overridden with a repository variable `AUTOSE_MODEL_<ROLE>`, and its backend with `AUTOSE_BACKEND_<ROLE>`.
 
-| Role | Stage | Model | Effort | Per-call cap |
+| Role | Stage | Model | Effort | Per-call cap (notional $) |
 |---|---|---|---|---|
-| Analyst | S1 | `claude-sonnet-5-5` | medium | $0.75 |
-| Judge (single call, no tools) | S1 check | `claude-haiku-5-5` | low | $0.05 |
-| Architect | S2 | `claude-sonnet-5-5` | medium | $0.75 |
-| Developer | S3 | `claude-sonnet-5-5` | high | $1.50 |
-| Tester | S4 | `claude-sonnet-5-5` | medium | $1.00 |
+| Analyst | S1 | `gpt-6.1-sol` | medium | $0.75 |
+| Judge (single call, no tools) | S1 check | `gpt-6.1-sol` | low | $0.05 |
+| Architect | S2 | `gpt-6.1-sol` | medium | $0.75 |
+| Developer | S3 | `gpt-6.1-sol` | high | $1.50 |
+| Tester | S4 | `gpt-6.1-sol` | medium | $1.00 |
 | Release | S5 | none (deterministic code) | — | — |
-| Reviewer | S6 | `claude-opus-5-5` | high | $2.00 |
-| Friendly reviewer (E1 variant B only) | — | `claude-sonnet-5-5` | — | — |
-| Builder (E2 variant B only) | — | `claude-sonnet-5-5` | — | — |
+| Reviewer | S6 | `gpt-6-astra` | high | $2.00 |
+| Verifier (one call per blocking finding, ADR-015) | S6 | `gpt-6-astra` | medium | $0.50 |
+| Friendly reviewer (E1 arm only) | — | `gpt-6.1-sol` (builder model) | high | $2.00 |
+| Cross-vendor reviewer + verifier (E1 arm only, via `agy`) | — | Claude Opus 4.6 | — | — |
+| Builder (E2 variant B only) | — | `gpt-6.1-sol` | high | $2.50 |
 
-Run cap: **$10 per run**. The orchestrator aborts before any call whose cap could exceed it, and it reserves one Reviewer cap before it starts a rework. Harness: OpenAI Codex CLI pinned to `@openai/codex@0.172.0`, authenticated with a ChatGPT subscription (`AUTOSE_BACKEND=codex`; supersedes the Claude Code CLI of [ADR-011](architecture/decisions/ADR-011.md)).
+**Budget.** A subscription has no per-call price, so costs are *notional list-price-equivalent dollars* computed from each call's token counts (`NOTIONAL_PRICES` in [`workflow/autose/backends.py`](workflow/autose/backends.py)). Run cap: **$10 (notional) per run**. The orchestrator aborts before any call whose cap could exceed it, and it reserves one Reviewer cap plus one Verifier cap before it starts a rework. Codex has no per-call budget flag, so per-call caps are checked after each call (each call is bounded by a 20-minute timeout). Token counts, the real consumption, are reported in [`results/tokens.md`](results/tokens.md).
 
 ## How to trigger the workflow
 
@@ -93,7 +95,7 @@ All triggers are on the fork, `vishesh312/tinydb`.
 1. **Codex login.** Install `@openai/codex@0.172.0` locally and run `codex login` with the ChatGPT account whose subscription the runs should use. This writes `~/.codex/auth.json`. There is no per-key spend limit: usage counts against the subscription's limits. Record what you used in [`results/tokens.md`](results/tokens.md).
 2. **Secret.** `gh secret set CODEX_AUTH_JSON --repo vishesh312/tinydb < ~/.codex/auth.json`. No other secret is needed. GitHub access uses the job's `GITHUB_TOKEN`.
    > **Warning.** This is a personal subscription credential (with a refresh token), not a revocable spend-capped API key. The workflows write it to a mode-600 `auth.json` only inside the tokenless agent steps and delete it afterwards; it is never in a step that holds `GH_TOKEN`. ChatGPT refresh tokens rotate, so if a CI run refreshes the token your local login may need `codex login` again (and the secret re-uploading).
-3. **Variables (optional).** `AUTOSE_MODEL_ANALYST`, `AUTOSE_MODEL_JUDGE`, `AUTOSE_MODEL_ARCHITECT`, `AUTOSE_MODEL_DEVELOPER`, `AUTOSE_MODEL_TESTER`, `AUTOSE_MODEL_REVIEWER` override the defaults above. `AUTOSE_SANDBOX=1` turns on the agent sandbox once the canary has shown that it works on `ubuntu-latest`.
+3. **Variables (optional).** `AUTOSE_MODEL_ANALYST`, `AUTOSE_MODEL_JUDGE`, `AUTOSE_MODEL_ARCHITECT`, `AUTOSE_MODEL_DEVELOPER`, `AUTOSE_MODEL_TESTER`, `AUTOSE_MODEL_REVIEWER` override the defaults above (the Verifier, friendly reviewer and Builder are not wired to repository variables; set `AUTOSE_MODEL_<ROLE>` in the environment for local runs). Agent commands are always sandboxed by Codex (network off); `AUTOSE_SANDBOX=1` additionally installs bubblewrap on the runner and only changes behaviour for the legacy `claude` backend.
 4. **Enable Issues and Actions.** Both are off by default on forks.
 5. **Workflow permissions.** Settings → Actions → General → enable **"Allow GitHub Actions to create and approve pull requests"**.
 6. **Branch protection on `main`.** Require a pull request before merging and block direct pushes, so neither the bot nor a person can push to `main` directly.
@@ -123,25 +125,22 @@ AUTOSE_TEST_TINYDB=/path/to/tinydb-up python3 -m pytest tests -q
 # (if a globally installed anyio plugin breaks pytest start-up, add: -p no:anyio)
 ```
 
-Local experiments (these **do** call models and cost money; see [`experiment/variants.md`](experiment/variants.md) and [`workflow/README.md`](workflow/README.md)):
+Local experiments (these **do** call models and use subscription quota; see [`experiment/variants.md`](experiment/variants.md) and [`workflow/README.md`](workflow/README.md)):
 
 ```bash
-cd workflow
 PY=/path/to/tinydb-up/.venv/bin/python
 
-# E1 (ADR-008): independent vs friendly reviewer on a seeded PR
-python -m autose --home ../results/e1 --python $PY review-local \
-  --pr-dir ../experiment/seeded_prs/SP1 --repo /path/to/tinydb-up --variant independent   # or: friendly
+# E1 (ADR-008): independent vs friendly vs cross-vendor reviewer on the 5 seeded PRs
+experiment/scripts/run_e1.sh /path/to/tinydb-up $PY /path/to/e1-out            # arms: independent friendly xvendor
 
-# E2 (ADR-001): capture frozen S1-S2, then Developer+Tester vs single Builder
-python -m autose --home ../results/frozen-run --python $PY local \
-  --issue-file ../experiment/issues/issue-1.md --repo /path/to/fresh/tinydb --stages 1-2
-python -m autose --home ../results/e2 --python $PY local \
-  --issue-file ../experiment/issues/issue-1.md --repo /path/to/fresh/tinydb \
-  --stages 3-4 --freeze-dir ../results/frozen/issue-1 --variant split                     # or: single
+# E2 (ADR-001): capture frozen S1-S2 per issue, then Developer+Tester vs single Builder, then score
+(cd workflow && python -m autose --home ../results/frozen-run --python $PY local \
+  --issue-file ../experiment/issues/issue-1.md --repo /path/to/fresh/tinydb --stages 1-2)
+experiment/scripts/run_e2.sh /path/to/tinydb-up $PY /path/to/frozen-root /path/to/e2-out
+python3 experiment/scripts/score.py 1 /path/to/e2-out/wt-1-split /path/to/tinydb-up $PY
 
 # zero-cost dry run of any command with scripted agents
-python -m autose --fake tests/fixtures/pop ...
+(cd workflow && python -m autose --fake tests/fixtures/pop ...)
 ```
 
 Hidden tests are run against a PR head as described in [`experiment/hidden_tests/README.md`](experiment/hidden_tests/README.md). Seeded PRs are opened on the fork with [`experiment/seeded_prs/open_seeded_prs.sh`](experiment/seeded_prs/open_seeded_prs.sh).
@@ -150,22 +149,21 @@ Hidden tests are run against a PR head as described in [`experiment/hidden_tests
 
 What exists and has been checked:
 
-- Design (DESIGN.md, 13 ADRs, component/sequence/state-machine views, stage map), committed before the agent code.
+- Design (DESIGN.md, ADR-001…013, component/sequence/state-machine views, stage map), committed before the agent code. ADR-014 (switch to the Codex subscription backend, superseding ADR-011) and ADR-015 (review verification pass) were added later, before any pipeline run.
 - Orchestrator, prompts, schemas and the three workflows.
-- **Offline test suite: 96 passed.** It covers a FakeRunner end-to-end run, unit tests, and hardening regression tests for the 19 findings of an independent code review. It makes no model or GitHub calls.
+- **Offline test suite: 120 tests.** It covers a FakeRunner end-to-end run, unit tests, the Codex/agy backends, the verification pass, and hardening regression tests for the 19 findings of an independent code review. It makes no model or GitHub calls. (One test, `test_build_collect_suite_and_fails_on_base`, asserts that the shared tinydb checkout has no extra git worktrees, so it fails while E2 worktrees from `run_e2.sh` exist on the same checkout.)
 - **Fork set up and protected.** The fork `main` is `b18cfe1`: `edff96a`, plus `ARCHITECTURE.md`, plus `.autose/` and the workflows. `main` is protected (PR required, admins included), and the first sync after protection went through PR [#6](https://github.com/vishesh312/tinydb/pull/6). Actions is enabled, and the lean `ci.yml` passes ([run](https://github.com/vishesh312/tinydb/actions/runs/45340122654)).
-- **Seeded PRs opened.** They are [#7–#11](https://github.com/vishesh312/tinydb/pulls?q=label%3Aseeded), labelled `seeded`, and have not been reviewed yet.
+- **Seeded PRs opened.** They are [#7–#11](https://github.com/vishesh312/tinydb/pulls?q=label%3Aseeded), labelled `seeded`; their reviews are logged in [`results/runs.md`](results/runs.md).
 - The 5 issue texts, hidden tests and reference fixes. The hidden tests were validated locally: they fail on base and pass with the reference fixes (19/19), and the existing 228-test suite still passes.
 - The 5 seeded PRs, validated locally: each applies cleanly and passes the existing suite, mypy and its own tests, and each defect is exposed by the hidden tests or the fails-on-base check as intended.
 
-What has **not** been run yet:
+Live runs:
 
-- **No live runs and no model calls.** Neither the workflow on GitHub nor the local E1/E2 experiments have been run, and no canary either. Token and cost totals are therefore zero so far.
-- The `CODEX_AUTH_JSON` secret is not set yet, so the canary, the pipeline runs and the reviews cannot run.
-- [`results/`](results/), the report's result sections and the demo video are scaffolding, marked `TBD(run)`. Every number there will come from a real, linked run (see the honesty rule in [`results/runs.md`](results/runs.md)).
+- [`results/runs.md`](results/runs.md) is the authoritative list of every live run (canary, pipeline, E1, E2), with links. A run that is not listed there has not happened, and no number in this repository comes from anywhere else.
+- Sections of [`results/`](results/), the report and the demo video that are still marked `TBD(run)` are waiting for real, linked runs (see the honesty rule in [`results/runs.md`](results/runs.md)).
 
 ## AI use
 
 > **TODO (student): confirm or rewrite this statement in your own words before submitting.** The course requires the ADR reasoning to be your own. State precisely which decisions you made, what you changed in the AI drafts, and how you reviewed them.
 
-Coding agents (Claude Code) were used substantially in this assignment, under the student's direction. They drafted the orchestrator code and tests, the GitHub workflows, the agent prompts, the Mermaid diagrams, the text of the ADRs and DESIGN.md, and the experiment material (issue texts, hidden tests, reference patches, seeded PRs and their friendly-context artifacts), as well as this README and the report skeleton. The student set the design direction and the decisions, and reviewed all generated material. Model API usage *by the workflow itself* is reported separately in [`results/tokens.md`](results/tokens.md).
+Coding agents (Claude Code) were used substantially in this assignment, under the student's direction. They drafted the orchestrator code and tests, the GitHub workflows, the agent prompts, the Mermaid diagrams, the text of the ADRs and DESIGN.md, and the experiment material (issue texts, hidden tests, reference patches, seeded PRs and their friendly-context artifacts), as well as this README and the report skeleton. The student set the design direction and the decisions, and reviewed all generated material. Model usage *by the workflow itself* (Codex on a ChatGPT subscription, ADR-014) is reported separately in [`results/tokens.md`](results/tokens.md).
