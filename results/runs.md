@@ -19,7 +19,11 @@ In `notes`, record for every run: the submission-repo commit it used (`sub@<sha>
 
 | item | Actions run | PR | review | status | notes |
 |---|---|---|---|---|---|
-| | | | | | |
+| SP1 (seeded) | not run yet | [#7](https://github.com/vishesh312/tinydb/pull/7) | — | PR open | opened by `open_seeded_prs.sh`; review is triggered with `/autose review` |
+| SP2 (seeded) | not run yet | [#8](https://github.com/vishesh312/tinydb/pull/8) | — | PR open | opened by `open_seeded_prs.sh`; review is triggered with `/autose review` |
+| SP3 (seeded) | not run yet | [#9](https://github.com/vishesh312/tinydb/pull/9) | — | PR open | opened by `open_seeded_prs.sh`; review is triggered with `/autose review` |
+| SP4 (seeded) | not run yet | [#10](https://github.com/vishesh312/tinydb/pull/10) | — | PR open | opened by `open_seeded_prs.sh`; review is triggered with `/autose review` |
+| SP5 (seeded) | not run yet | [#11](https://github.com/vishesh312/tinydb/pull/11) | — | PR open | opened by `open_seeded_prs.sh`; review is triggered with `/autose review` |
 
 `item` is `<seeded PR id> / A` (independent) or `<seeded PR id> / B` (friendly). Real AutoSE PRs reviewed by variant B are listed here too.
 
