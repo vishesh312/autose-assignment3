@@ -78,7 +78,9 @@ class GitHub:
             try:
                 data = self.api(f"repos/{self.repo}/collaborators/{user}/permission")
                 self._perm_cache[user] = data.get("permission", "none")
-            except GitHubError:
+            except GitHubError as exc:
+                if not _is_404(exc):
+                    raise  # fail loudly: an API outage must not look like "no permission" or "trusted"
                 self._perm_cache[user] = "none"
         return self._perm_cache[user]
 
@@ -96,14 +98,22 @@ class GitHub:
         ]
         return Issue(number, data["title"], data.get("body") or "", trusted)
 
-    def upsert_comment(self, number: int, marker: str, body: str) -> None:
-        """Create or edit in place the one comment carrying ``marker`` (sticky status, DESIGN §5)."""
-        body = body[:65000]
+    def bot_comment(self, number: int, marker: str) -> dict[str, Any] | None:
+        """The latest comment carrying ``marker`` that the bot itself wrote (others can copy the marker)."""
+        found = None
         for c in self.api_paginated(f"repos/{self.repo}/issues/{number}/comments"):
-            if marker in (c.get("body") or "") and c["user"].get("type") == "Bot":
-                self.api(f"repos/{self.repo}/issues/comments/{c['id']}", "-X", "PATCH", input_json={"body": body})
-                return
-        self.comment(number, body)
+            if marker in (c.get("body") or "") and c["user"].get("login") == config.BOT_NAME:
+                found = c
+        return found
+
+    def upsert_comment(self, number: int, marker: str, body: str) -> None:
+        """Create or edit in place the bot's one comment carrying ``marker`` (sticky status, DESIGN §5)."""
+        body = body[:65000]
+        c = self.bot_comment(number, marker)
+        if c:
+            self.api(f"repos/{self.repo}/issues/comments/{c['id']}", "-X", "PATCH", input_json={"body": body})
+        else:
+            self.comment(number, body)
 
     def comment(self, number: int, body: str) -> None:
         self.api(f"repos/{self.repo}/issues/{number}/comments", "-X", "POST", input_json={"body": body[:65000]})
@@ -132,7 +142,7 @@ class GitHub:
         try:
             data = self.api(f"repos/{self.repo}/compare/{base}...{branch}")
         except GitHubError as exc:
-            if "404" in str(exc) or "Not Found" in str(exc):
+            if _is_404(exc):
                 return None
             raise
         out = []
@@ -187,6 +197,10 @@ class GitHub:
         if target_url:
             payload["target_url"] = target_url
         self.api(f"repos/{self.repo}/statuses/{sha}", "-X", "POST", input_json=payload)
+
+
+def _is_404(exc: Exception) -> bool:
+    return "404" in str(exc) or "Not Found" in str(exc)
 
 
 def run_url() -> str:

@@ -15,12 +15,12 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from . import checks, config, render
 from .agent import AgentCall, ClaudeRunner, FakeRunner, Runner, run_agent
 from .github import STATUS_MARKER, TRACE_MARKER, GitHub, GitHubError, Issue, retry_once, run_url
-from .ledger import State, ledger_cost
+from .ledger import ledger_cost
 from .pipeline import IssueInput, Pipeline, Stop, rework_affordable
 from .review import ReviewInput, decide_post, load_input, run_review
 
@@ -68,28 +68,38 @@ def parse_issue_file(path: Path, number: int | None) -> IssueInput:
     return IssueInput(number, title, body.strip(), comments)
 
 
-class StatusSink(Protocol):
-    def __call__(self, p: Pipeline) -> None: ...
+def best_effort(what: str, fn: Callable[[], Any]) -> None:
+    """Non-critical GitHub calls (status, trace, labels) log and continue; critical outputs are set first."""
+    try:
+        fn()
+    except Exception as exc:  # noqa: BLE001 - reporting must never fail the job after the real work
+        print(f"warning: {what} failed: {exc}", file=sys.stderr)
 
 
-def status_updater(gh: GitHub, issue: int, pr_url: str = "") -> StatusSink:
-    def update(p: Pipeline) -> None:
-        gh.upsert_comment(issue, STATUS_MARKER, render.status_comment(
-            STATUS_MARKER, issue, p.ledger.records(), p.state.status, run_url=run_url(), pr_url=pr_url))
-    return update
+def update_status(gh: GitHub, issue: int, status: str, lines: list[str], cost: float | None = None,
+                  pr_url: str = "") -> None:
+    """Sticky status comment with an append-only timeline (DESIGN §5). Only the bot's own comment is used."""
+    prev = gh.bot_comment(issue, STATUS_MARKER)
+    body = (prev or {}).get("body") or ""
+    timeline = render.parse_timeline(body)
+    for ln in lines:
+        if ln not in timeline:
+            timeline.append(ln)
+    if not pr_url:
+        m = re.search(r"^PR: (\S+)", body, re.M)
+        pr_url = m.group(1) if m else ""
+    gh.upsert_comment(issue, STATUS_MARKER, render.status_comment(STATUS_MARKER, issue, status, timeline, cost,
+                                                                  run_url(), pr_url))
 
 
-def add_round_line(gh: GitHub, issue: int, line: str) -> None:
-    """Append one line to the sticky status comment's 'Review rounds' section."""
-    body = ""
-    for c in gh.api_paginated(f"repos/{gh.repo}/issues/{issue}/comments"):
-        if STATUS_MARKER in (c.get("body") or ""):
-            body = c["body"]
-    if not body:
-        body = f"{STATUS_MARKER}\n### AutoSE status for #{issue}\n"
-    if "#### Review rounds" not in body:
-        body += "\n#### Review rounds\n"
-    gh.upsert_comment(issue, STATUS_MARKER, body + f"\n- {line}")
+def stamp() -> str:
+    return time.strftime("%H:%M", time.gmtime())
+
+
+def refuse_token(what: str) -> None:
+    """Agent steps must run without any GitHub token (DESIGN §6, ADR-005 layer 2)."""
+    if os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN"):
+        raise SystemExit(f"refusing to run {what} with a GitHub token in the environment")
 
 
 # --------------------------------------------------------------------------- gate
@@ -154,32 +164,137 @@ def cmd_gate(a: argparse.Namespace) -> int:
     print(f"gate: {out['reason']}")
     set_output(**out)
     if out["proceed"] == "true" and out["mode"] == "full":
-        add_round_line(gh, int(out["issue"]), f"Run started: {run_url()}")
+        best_effort("status comment", lambda: update_status(
+            gh, int(out["issue"]), "running", [f"- {stamp()} gate: run started {run_url()}"]))
     return 0
 
 
-# --------------------------------------------------------------------------- build / rework / release
+# --------------------------------------------------------------------------- build / rework
+#
+# Each of build and rework is three steps (DESIGN §6, ADR-005):
+#   prepare  (token)    write issue.json + branch.json under AUTOSE_HOME/issue-<N>/input/
+#   agent    (NO token) run S1-S4 / the rework offline from those files, commit locally
+#   publish  (token)    final allowlist gate, push (credentials only here), PR, labels, comments
+
+
+def _home(a: argparse.Namespace) -> Path:
+    return Path(a.home).resolve()
+
+
+def _input_dir(a: argparse.Namespace) -> Path:
+    d = _home(a) / f"issue-{a.issue}" / "input"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def prepare_inputs(a: argparse.Namespace) -> None:
+    """Token-holding step: trusted inputs to files, plus the human-commit check (DESIGN §10)."""
+    gh = GitHub(a.repo_slug)
+    raw = gh.issue(a.issue)  # comment author lookups fail loudly rather than silently dropping comments
+    d = _input_dir(a)
+    (d / "issue.json").write_text(json.dumps({"number": raw.number, "title": raw.title, "body": raw.body,
+                                              "maintainer_comments": raw.maintainer_comments}, indent=2) + "\n")
+    human = gh.non_bot_commits(config.BASE_BRANCH, f"autose/issue-{a.issue}")
+    (d / "branch.json").write_text(json.dumps({"exists": human is not None, "human_commits": human or []}) + "\n")
+    set_output(prepared="true")
+    if a.cmd == "build":
+        def clear_labels() -> None:
+            for label in ("autose:needs-info", "autose:failed", "autose:awaiting-human"):
+                gh.remove_label(a.issue, label)
+        best_effort("labels", clear_labels)
+    best_effort("status comment", lambda: update_status(gh, a.issue, "running",
+                                                        [f"- {stamp()} {a.cmd}: started {run_url()}"]))
+
+
+def _load_inputs(a: argparse.Namespace) -> tuple[IssueInput, dict[str, Any]]:
+    d = _input_dir(a)
+    data = json.loads((d / "issue.json").read_text())
+    branch = json.loads((d / "branch.json").read_text())
+    return IssueInput(data["number"], data["title"], data["body"], data["maintainer_comments"]), branch
+
+
+def _agent_pipeline(a: argparse.Namespace, issue: IssueInput) -> Pipeline:
+    return Pipeline(issue, Path(a.repo_dir), _home(a), make_runner(a.fake), a.python,
+                    path_prefix=path_prefix(a.python), deadline=job_deadline(), reserve_usd=config.review_reserve())
+
+
+def _guard_branch(p: Pipeline, branch: dict[str, Any]) -> None:
+    """Refuse to overwrite commits a person pushed to ``autose/issue-<N>`` (DESIGN §10)."""
+    if branch.get("human_commits"):
+        raise p.stop("S5", f"{p.state.branch} has commits not authored by the bot "
+                           f"({', '.join(branch['human_commits'])}); not resetting or force-pushing over them. "
+                           "Remove them or rename the branch, then re-trigger.")
+
+
+def agent_build(a: argparse.Namespace) -> None:
+    """No-token step: S1-S4 offline, then a local commit of allowlisted paths."""
+    refuse_token("the build agent step")
+    issue, branch = _load_inputs(a)
+    p = _agent_pipeline(a, issue)
+    try:
+        _guard_branch(p, branch)
+        checks.git(p.repo, "checkout", "-q", "-B", p.state.branch)  # fresh from main (ADR-004)
+        p.run_build()
+        p.commit(f"autose: {issue.title} (#{issue.number})")
+    except Stop:
+        pass
+    set_output(status=p.state.status, spent_usd=p.state.cost_usd)
+
+
+def agent_rework(a: argparse.Namespace) -> None:
+    """No-token step: carry the review's cost, check the reservation, re-enter at the routed stage."""
+    refuse_token("the rework agent step")
+    issue, branch = _load_inputs(a)
+    review = json.loads((Path(a.review_dir) / "review.json").read_text())
+    p = _agent_pipeline(a, issue)
+    review_cost = ledger_cost(Path(a.review_dir) / "ledger.jsonl")
+    p.state.cost_usd = round(p.state.cost_usd + review_cost, 4)
+    p.ledger.event(stage="S6", event="route", round=p.state.round,
+                   reason=f"review cost ${review_cost:.2f} carried; route {a.route}")
+    ok, need = rework_affordable(p.state.cost_usd, a.route)
+    if not ok:
+        reason = (f"Rework to {a.route} skipped: ${p.state.cost_usd:.2f} spent + ${need:.2f} needed (route caps + "
+                  f"review reserve) exceeds the ${config.RUN_CAP_USD:.2f} run cap. The last review stands.")
+        p.state.status, p.state.stop_reason = "awaiting-human", reason
+        p.ledger.event(stage="S6", event="stop", round=p.state.round, passed=None, reason=reason)
+        p.save()
+    else:
+        try:
+            _guard_branch(p, branch)
+            p.run_rework(a.route, review)
+            p.commit(f"autose: rework {a.route} for #{issue.number} (round {p.state.round + 1})")
+        except Stop:
+            pass
+    set_output(status=p.state.status, spent_usd=p.state.cost_usd)
+
+
+def final_gate(repo: Path, base: str, issue: int) -> list[str]:
+    """Last deterministic check before push: committed paths ⊆ tinydb/** + the one test file (DESIGN §10)."""
+    return checks.path_violations(checks.committed_paths(repo, base),
+                                  [config.package_glob(), config.tester_file(issue)])
 
 
 def release(p: Pipeline, gh: GitHub, title: str) -> dict[str, Any]:
-    """S5, deterministic: commit, force-push with lease, open/update PR, trace comment (DESIGN §2 S5)."""
-    branch = p.state.branch
-    head = p.commit(f"autose: {title} (#{p.issue.number})")
-    repo = p.repo
+    """S5, deterministic: final gate, force-push with lease, open/update PR (DESIGN §2 S5)."""
+    branch, repo = p.state.branch, p.repo
+    bad = final_gate(repo, p.state.base_sha, p.issue.number)
+    if bad:
+        raise p.stop("S5", f"Final gate: the commit touches paths outside the allowlist: {', '.join(bad)}")
+    p.state.head_sha = checks.git(repo, "rev-parse", "HEAD").strip()
+    full_env = dict(os.environ)  # push needs GH_TOKEN for the credential helper; nothing else does
 
     def push() -> None:
-        # Credentials only now, after every agent in this job has finished (DESIGN §10.1).
-        if os.environ.get("GH_TOKEN"):
-            subprocess.run(["gh", "auth", "setup-git"], check=True)
-        remote = checks.git(repo, "ls-remote", "origin", f"refs/heads/{branch}").split()
+        # Credentials only now, after every agent has finished (DESIGN §10.1).
+        subprocess.run(["gh", "auth", "setup-git"], check=True)
+        remote = checks.git(repo, "ls-remote", "origin", f"refs/heads/{branch}", env=full_env).split()
         expect = remote[0] if remote else ""
         checks.git(repo, "push", f"--force-with-lease=refs/heads/{branch}:{expect}", "origin",
-                   f"HEAD:refs/heads/{branch}")
+                   f"HEAD:refs/heads/{branch}", env=full_env)
 
     try:
         retry_once(push)
         report = (p.dir / "test_report.md").read_text() if (p.dir / "test_report.md").exists() else ""
-        summary = "\n".join(ln for ln in report.splitlines() if ln.startswith("- Result") or ln.startswith("- Counts"))
+        summary = "\n".join(ln for ln in report.splitlines() if ln.startswith(("- Result", "- Counts")))
         body = render.pr_md(p.issue.number, title, p.read_json("spec.json") or {"summary": ""},
                             p.read_json("design.json"), summary or "See test_report.md", run_url())
         p.write("pr.md", body)
@@ -190,88 +305,52 @@ def release(p: Pipeline, gh: GitHub, title: str) -> dict[str, Any]:
     if pr.get("state") != "OPEN":
         raise p.stop("S5", f"PR #{pr['number']} is {pr.get('state')}, not OPEN")
     p.write("pr.md", (p.dir / "pr.md").read_text() + f"\nPR: {pr['url']}\n")
-    spec_t, design_t, report_t = ((p.dir / n).read_text() for n in ("spec.md", "design.md", "test_report.md"))
-    gh.upsert_comment(pr["number"], TRACE_MARKER, render.trace_comment(TRACE_MARKER, spec_t, design_t, report_t))
     p.state.pr, p.state.status = int(pr["number"]), "pr-open"
-    p.check("S5", True, f"PR #{pr['number']} open at {head[:8]}; CI runs next")
+    p.check("S5", True, f"PR #{pr['number']} open at {p.state.head_sha[:8]}; CI runs next")
     return pr
 
 
-def _home(a: argparse.Namespace) -> Path:
-    return Path(a.home).resolve()
-
-
-def _finish_stop(gh: GitHub, p: Pipeline, stop: Stop) -> None:
-    if stop.status == "needs-info":
-        gh.comment(p.issue.number, (p.dir / "questions.md").read_text())
-        gh.add_label(p.issue.number, "autose:needs-info")
-    elif stop.status == "awaiting-human":
-        gh.add_label(p.issue.number, "autose:awaiting-human")
-    else:
-        gh.add_label(p.issue.number, "autose:failed")
-
-
-def _guard_branch(gh: GitHub, p: Pipeline) -> None:
-    """Refuse to overwrite commits a person pushed to ``autose/issue-<N>`` (DESIGN §10)."""
-    human = gh.non_bot_commits(config.BASE_BRANCH, p.state.branch)
-    if human:
-        raise p.stop("S5", f"{p.state.branch} has commits not authored by the bot ({', '.join(human)}); "
-                           "not resetting or force-pushing over them. Remove them or rename the branch, then re-trigger.")
+def publish(a: argparse.Namespace) -> None:
+    """Token-holding step after the agent step: push + PR, or report the stop (labels, questions)."""
+    gh = GitHub(a.repo_slug)
+    issue, _ = _load_inputs(a)
+    p = Pipeline(issue, Path(a.repo_dir), _home(a), ClaudeRunner(), a.python)  # no agent is called here
+    pr: dict[str, Any] = {}
+    if p.state.status == "tests-passed":
+        try:
+            pr = release(p, gh, issue.title)
+        except Stop:
+            pass
+    st = p.state
+    # Critical outputs first; everything after this is best effort.
+    set_output(status=st.status, pr=st.pr or "", head_sha=st.head_sha if st.status == "pr-open" else "",
+               spent_usd=st.cost_usd)
+    if pr:
+        names = ("spec.md", "design.md", "test_report.md")
+        texts = [(p.dir / n).read_text() if (p.dir / n).exists() else "" for n in names]
+        best_effort("trace comment", lambda: gh.upsert_comment(pr["number"], TRACE_MARKER, render.trace_comment(
+            TRACE_MARKER, texts[0], texts[1], texts[2])))
+    if st.status == "needs-info":
+        best_effort("questions", lambda: gh.comment(issue.number, (p.dir / "questions.md").read_text()))
+        best_effort("label", lambda: gh.add_label(issue.number, "autose:needs-info"))
+    elif st.status == "awaiting-human":
+        best_effort("label", lambda: gh.add_label(issue.number, "autose:awaiting-human"))
+    elif st.status != "pr-open":
+        best_effort("label", lambda: gh.add_label(issue.number, "autose:failed"))
+    lines = render.timeline_from_ledger(p.ledger.records(), a.cmd)
+    if st.stop_reason and st.status != "pr-open":
+        lines.append(f"- {stamp()} {a.cmd}: **{st.status}**: {st.stop_reason[:300]}")
+    best_effort("status comment", lambda: update_status(gh, issue.number, st.status, lines, st.cost_usd,
+                                                        pr.get("url", "")))
 
 
 def cmd_build(a: argparse.Namespace) -> int:
-    gh = GitHub(a.repo_slug)
-    raw: Issue = gh.issue(a.issue)
-    repo = Path(a.repo_dir).resolve()
-    for label in ("autose:needs-info", "autose:failed", "autose:awaiting-human"):
-        gh.remove_label(a.issue, label)
-    p = Pipeline(IssueInput(raw.number, raw.title, raw.body, raw.maintainer_comments), repo, _home(a),
-                 make_runner(a.fake), a.python, on_update=status_updater(gh, a.issue),
-                 path_prefix=path_prefix(a.python), deadline=job_deadline())
-    try:
-        _guard_branch(gh, p)
-        checks.git(repo, "checkout", "-q", "-B", p.state.branch)  # fresh from main (ADR-004)
-        p.run_build()
-        pr = release(p, gh, raw.title)
-        status_updater(gh, a.issue, pr["url"])(p)
-        set_output(status="pr-open", pr=pr["number"], head_sha=p.state.head_sha, cost_usd=p.state.cost_usd)
-    except Stop as stop:
-        _finish_stop(gh, p, stop)
-        set_output(status=stop.status, pr=p.state.pr or "", head_sha="", cost_usd=p.state.cost_usd)
+    {"prepare": prepare_inputs, "agent": agent_build, "publish": publish}[a.phase](a)
     return 0
 
 
 def cmd_rework(a: argparse.Namespace) -> int:
-    gh = GitHub(a.repo_slug)
-    home = _home(a)
-    repo = Path(a.repo_dir).resolve()
-    state = State.load(home / f"issue-{a.issue}" / "state.json")
-    review = json.loads((Path(a.review_dir) / "review.json").read_text())
-    raw = gh.issue(a.issue)
-    p = Pipeline(IssueInput(raw.number, raw.title, "", []), repo, home, make_runner(a.fake), a.python,
-                 on_update=status_updater(gh, a.issue), path_prefix=path_prefix(a.python), deadline=job_deadline())
-    review_cost = ledger_cost(Path(a.review_dir) / "ledger.jsonl")
-    p.state.cost_usd = round(state.cost_usd + review_cost, 4)
-    p.ledger.event(stage="S6", event="route", round=p.state.round, reason=f"review cost ${review_cost:.2f} carried; "
-                                                                          f"route {a.route}")
-    ok, need = rework_affordable(p.state.cost_usd, a.route)
-    if not ok:
-        reason = (f"Rework to {a.route} skipped: ${p.state.cost_usd:.2f} spent + ${need:.2f} reserved "
-                  f"(rework caps + one review) exceeds the ${config.RUN_CAP_USD:.2f} run cap. The last review stands.")
-        p.state.status, p.state.stop_reason = "awaiting-human", reason
-        p.ledger.event(stage="S6", event="stop", round=p.state.round, passed=None, reason=reason)
-        p.save()
-        add_round_line(gh, a.issue, reason)
-        set_output(status="awaiting-human", head_sha="", cost_usd=p.state.cost_usd)
-        return 0
-    try:
-        _guard_branch(gh, p)
-        p.run_rework(a.route, review)
-        release(p, gh, raw.title)
-        set_output(status="pr-open", head_sha=p.state.head_sha, cost_usd=p.state.cost_usd)
-    except Stop as stop:
-        _finish_stop(gh, p, stop)
-        set_output(status=stop.status, head_sha="", cost_usd=p.state.cost_usd)
+    {"prepare": prepare_inputs, "agent": agent_rework, "publish": publish}[a.phase](a)
     return 0
 
 
@@ -280,27 +359,27 @@ def cmd_rework(a: argparse.Namespace) -> int:
 
 def cmd_review(a: argparse.Namespace) -> int:
     in_dir = Path(a.in_dir)
+    repo = Path(a.repo_dir)
     if a.prepare:  # this step HAS the token; the agent step below does not
         gh = GitHub(a.repo_slug)
         issue, pr = gh.issue(a.issue), gh.pr(a.pr)
         if a.issue == a.pr:  # seeded PR without a linked issue: the PR text is the issue
             issue = Issue(a.pr, pr["title"], pr.get("body") or "", issue.maintainer_comments)
+        # Review exactly the commit that is checked out; post-review compares it with the live head.
+        head = checks.git(repo, "rev-parse", "HEAD").strip()
+        base = pr["baseRefOid"]
+        checks.git(repo, "fetch", "-q", "origin", base, check=False)
         in_dir.mkdir(parents=True, exist_ok=True)
         (in_dir / "issue.json").write_text(json.dumps({"number": a.issue, "title": issue.title, "body": issue.body,
                                                        "maintainer_comments": issue.maintainer_comments}, indent=2))
-        (in_dir / "pr.json").write_text(json.dumps({"number": a.pr, "base_sha": pr["baseRefOid"],
-                                                    "head_sha": pr["headRefOid"]}, indent=2))
-        repo = Path(a.repo_dir)
-        checks.git(repo, "fetch", "-q", "origin", pr["baseRefOid"], check=False)
-        (in_dir / "diff.patch").write_text(checks.git(repo, "diff", f"{pr['baseRefOid']}...{pr['headRefOid']}"))
+        (in_dir / "pr.json").write_text(json.dumps({"number": a.pr, "base_sha": base, "head_sha": head}, indent=2))
+        (in_dir / "diff.patch").write_text(checks.git(repo, "diff", "--no-renames", f"{base}...HEAD"))
         return 0
-    if os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN"):
-        print("refusing to run the reviewer with a GitHub token in the environment", file=sys.stderr)
-        return 2
+    refuse_token("the reviewer")
     inp = load_input(in_dir, Path(a.previous_review) if a.previous_review else None, a.round)
     probe = Path(a.probe_dir or os.path.join(os.environ.get("RUNNER_TEMP", tempfile.gettempdir()), "review-probes"))
-    meta = run_review(inp, Path(a.repo_dir).resolve(), Path(a.out), make_runner(a.fake), probe,
-                      path_prefix=path_prefix(a.python))
+    meta = run_review(inp, repo.resolve(), Path(a.out), make_runner(a.fake), probe,
+                      path_prefix=path_prefix(a.python), spent_usd=a.spent_usd, deadline=job_deadline())
     print(json.dumps(meta, indent=2))
     return 0
 
@@ -310,44 +389,52 @@ def cmd_post_review(a: argparse.Namespace) -> int:
     rdir = Path(a.review_dir)
     meta = json.loads((rdir / "review_meta.json").read_text()) if (rdir / "review_meta.json").exists() else None
     review = json.loads((rdir / "review.json").read_text()) if (rdir / "review.json").exists() else None
-    pr = gh.pr(a.pr)
     if a.rework_status and a.rework_status not in ("pr-open", "skipped"):
-        set_output(verdict="awaiting-human" if a.rework_status == "awaiting-human" else "stopped", route="")
+        verdict = "awaiting-human" if a.rework_status == "awaiting-human" else "stopped"
+        set_output(verdict=verdict, route="")
+        best_effort("status comment", lambda: update_status(
+            gh, a.issue, verdict, [f"- {stamp()} round {a.round}: rework ended **{a.rework_status}**"]))
         return 0
+    pr = gh.pr(a.pr)
     d = decide_post(meta, review, final=a.final, ci_result=a.ci_result, current_head=pr["headRefOid"])
+    set_output(verdict=d.verdict, route=d.route)  # critical output before any further GitHub call
     if d.verdict == "stopped":
-        gh.append_pr_body(a.pr, render.stop_section(f"{d.note}\n\nCI log: {run_url()}"))
-        gh.add_label(a.issue, "autose:failed")
+        best_effort("PR body", lambda: gh.append_pr_body(a.pr, render.stop_section(f"{d.note}\n\nCI log: {run_url()}")))
+        best_effort("label", lambda: gh.add_label(a.issue, "autose:failed"))
     if d.post and review is not None and meta is not None:
+        invalid = d.verdict == "awaiting-human"
         note = d.note if d.verdict in ("awaiting-human", "final") else ""
-        body = render.review_md(review, a.round, final=d.verdict == "final", note=note)
-        gh.post_review(a.pr, body, meta["head_sha"])
-        if d.verdict in ("approve", "changes_requested", "final"):
-            gh.remove_label(a.pr, "autose:review-approved")
-            gh.remove_label(a.pr, "autose:review-changes-requested")
-            gh.add_label(a.pr, "autose:review-approved" if review["verdict"] == "approve"
-                         else "autose:review-changes-requested")
-    add_round_line(gh, a.issue, f"Round {a.round}: **{d.verdict}** {d.note}")
-    set_output(verdict=d.verdict, route=d.route)
+        gh.post_review(a.pr, render.review_md(review, a.round, final=d.verdict == "final", note=note,
+                                              invalid=invalid), meta["head_sha"])
+        if not invalid:
+            def labels() -> None:
+                gh.remove_label(a.pr, "autose:review-approved")
+                gh.remove_label(a.pr, "autose:review-changes-requested")
+                gh.add_label(a.pr, "autose:review-approved" if review["verdict"] == "approve"
+                             else "autose:review-changes-requested")
+            best_effort("labels", labels)
+    best_effort("status comment", lambda: update_status(
+        gh, a.issue, d.verdict, [f"- {stamp()} round {a.round}: review **{d.verdict}** {d.note}"]))
     return 0
 
 
 def cmd_finalize(a: argparse.Namespace) -> int:
-    """Always runs (``if: always()``): makes sure the issue ends with a label and a final line (ADR-009)."""
+    """Always runs (``if: always()``): the issue ends with a label and a final timeline line (ADR-009)."""
     gh = GitHub(a.repo_slug)
     verdicts = [v for v in a.verdicts.split(",") if v]
     last = verdicts[-1] if verdicts else ""
-    if a.build_status in ("needs-info",):
+    if a.build_status == "needs-info":
         final = "needs-info"
     elif last in ("approve", "final", "awaiting-human", "stale", "changes_requested"):
         final = "awaiting-human"
-        gh.add_label(int(a.issue), "autose:awaiting-human")
     else:
         final = "failed"
-        gh.add_label(int(a.issue), "autose:failed")
-    add_round_line(gh, int(a.issue), f"Finished: **{final}** (build: {a.build_status or '-'}, "
-                                     f"rounds: {', '.join(verdicts) or '-'}). A human decides; the bot never merges.")
     set_output(final=final)
+    if final != "needs-info":
+        best_effort("label", lambda: gh.add_label(int(a.issue), f"autose:{final}"))
+    best_effort("status comment", lambda: update_status(
+        gh, int(a.issue), final, [f"- {stamp()} finalize: **{final}** (build: {a.build_status or '-'}, rounds: "
+                                  f"{', '.join(verdicts) or '-'}). A human decides; the bot never merges."]))
     return 0
 
 
@@ -442,6 +529,10 @@ def cmd_canary(a: argparse.Namespace) -> int:
         return run_agent(runner, call)
 
     r = ask("bare", "What is 2+2? Put only the digits in `answer`.", [], [])
+    # The same argv builder as production, so this also proves the hidden flags
+    # (--max-turns, --append-system-prompt-file, --restricted, ...) still parse in the pinned CLI.
+    results["argv_flags_parse"] = {"pass": r.subtype not in ("error_unparseable", "error_no_cli", "error_os"),
+                                   "subtype": r.subtype, "error": r.error}
     results["structured_output"] = {"pass": r.output is not None, "error": r.error}
     results["bare_ignores_claude_md"] = {"pass": bool(r.output) and "PINEAPPLE" not in r.output["answer"].upper(),
                                          "answer": (r.output or {}).get("answer")}
@@ -479,7 +570,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("gate", help="authorise the trigger; write proceed/mode/issue/pr outputs").set_defaults(fn=cmd_gate)
 
+    phase_help = "prepare (token: inputs to files) | agent (NO token: stages offline) | publish (token: push, PR)"
     s = sub.add_parser("build", help="S1-S5 for an issue: spec, design, implement, test, push + PR")
+    s.add_argument("--phase", choices=["prepare", "agent", "publish"], required=True, help=phase_help)
     s.add_argument("--issue", type=int, required=True)
     s.add_argument("--repo-dir", default="work")
     s.set_defaults(fn=cmd_build)
@@ -493,6 +586,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--out", default="review-out")
     s.add_argument("--previous-review")
     s.add_argument("--probe-dir")
+    s.add_argument("--spent-usd", type=float, default=0.0, help="run spend before this review (job output)")
     g = s.add_mutually_exclusive_group(required=True)
     g.add_argument("--prepare", action="store_true")
     g.add_argument("--no-github", action="store_true")
@@ -509,10 +603,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_post_review)
 
     s = sub.add_parser("rework", help="re-enter at S2|S3|S4 after a send-back, then release")
+    s.add_argument("--phase", choices=["prepare", "agent", "publish"], required=True, help=phase_help)
     s.add_argument("--issue", type=int, required=True)
-    s.add_argument("--route", choices=["S2", "S3", "S4"], required=True)
+    s.add_argument("--route", choices=["S2", "S3", "S4"], default="S3")
     s.add_argument("--repo-dir", default="work")
-    s.add_argument("--review-dir", required=True)
+    s.add_argument("--review-dir", default="prev-review")
     s.set_defaults(fn=cmd_rework)
 
     s = sub.add_parser("finalize", help="final labels and status line; a human decides")

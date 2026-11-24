@@ -55,7 +55,8 @@ ALWAYS_FORBIDDEN = [
     "**/conftest.py", "MANIFEST.in", "ARCHITECTURE.md", "CLAUDE.md", "**/CLAUDE.md", ".claude/**",
 ]
 #: Build/test by-products that are never counted as an agent's edit.
-NOISE_PATTERNS = ["**/__pycache__/**", ".pytest_cache/**", ".mypy_cache/**", ".coverage", ".coverage.*",
+NOISE_PATTERNS = ["**/__pycache__/**", "**/.pytest_cache/**", "**/.mypy_cache/**", ".coverage", ".coverage.*",
+                  "*.egg-info/**", "**/*.egg-info/**", ".venv/**", "coverage.xml", "htmlcov/**",
                   "**/*.pyc"]
 
 
@@ -150,3 +151,30 @@ ROLE_NAMES = list(_ROLES)
 
 #: ADR-006 reservation: the agent caps a rework at each route would spend at minimum.
 REWORK_ROLES = {"S2": ["architect", "developer", "tester"], "S3": ["developer", "tester"], "S4": ["tester"]}
+
+
+def review_reserve() -> float:
+    """Budget build/rework must leave untouched: one Reviewer cap (ADR-006 reservation rule).
+
+    The invalid-review re-ask is *not* reserved: it runs only if it still fits under the run cap,
+    otherwise the review stays invalid and the run ends ``awaiting-human`` (ADR-013). Reserving it
+    too would make the first ``approach`` send-back unaffordable after a typical run ($2.85 + $7.25).
+    """
+    return role("reviewer").budget_usd
+
+
+#: Variables never passed to agents or to subprocesses the orchestrator runs on agent-written code
+#: (DESIGN §6, ADR-005 layer 2): tokens, and Actions files that let a process set env/outputs/PATH.
+SECRET_ENV = {"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GITHUB_ENV",
+              "GITHUB_PATH", "GITHUB_OUTPUT", "GITHUB_STEP_SUMMARY", "GITHUB_STATE"}
+
+
+def scrubbed_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """``os.environ`` minus :data:`SECRET_ENV` and every ``ACTIONS_*`` runtime token/URL."""
+    env = {k: v for k, v in os.environ.items() if k not in SECRET_ENV and not k.startswith("ACTIONS_")}
+    env.update(extra or {})
+    return env
+
+
+#: Every orchestrator git command ignores repo-controlled hooks and fsmonitor (agent-writable .git/config).
+GIT_SAFE = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]

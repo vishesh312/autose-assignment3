@@ -35,16 +35,19 @@ class CheckResult:
 # --------------------------------------------------------------------------- shell helpers
 
 def run(cmd: list[str], cwd: Path, timeout: int = 600, env: dict[str, str] | None = None) -> tuple[int, str]:
-    """Run a command, returning ``(exit code, combined output)``."""
+    """Run a command on agent-written code with a scrubbed environment; return ``(exit code, output)``."""
     try:
-        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env)
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+                           env=env if env is not None else config.scrubbed_env())
     except subprocess.TimeoutExpired:
         return 124, f"timeout after {timeout}s: {' '.join(cmd)}"
     return p.returncode, (p.stdout + p.stderr)
 
 
-def git(repo: Path, *args: str, check: bool = True) -> str:
-    p = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True)
+def git(repo: Path, *args: str, check: bool = True, env: dict[str, str] | None = None) -> str:
+    """Run git with hooks and fsmonitor disabled and a scrubbed env (``env`` overrides, e.g. for push)."""
+    p = subprocess.run(["git", *config.GIT_SAFE, *args], cwd=repo, capture_output=True, text=True,
+                       env=env if env is not None else config.scrubbed_env())
     if check and p.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {p.stderr.strip()}")
     return p.stdout
@@ -90,11 +93,17 @@ def path_violations(paths: Iterable[str], allowed: list[str]) -> list[str]:
     return sorted(bad)
 
 
+def untracked(repo: Path, *pathspec: str) -> list[str]:
+    """Untracked files, *including* ignored ones: an agent must not hide a file behind .gitignore or
+    .git/info/exclude. By-products are filtered by our own :data:`config.NOISE_PATTERNS` instead."""
+    out = git(repo, "ls-files", "--others", "--", *pathspec).splitlines()
+    return [p for p in out if p and not is_noise(p)]
+
+
 def dirty_paths(repo: Path, base: str) -> list[str]:
-    """Every path that differs from ``base``: ``git diff --name-only base`` plus untracked files."""
-    changed = git(repo, "diff", "--name-only", base).splitlines()
-    untracked = git(repo, "ls-files", "--others", "--exclude-standard").splitlines()
-    return sorted({p for p in changed + untracked if p and not is_noise(p)})
+    """Every path that differs from ``base``: ``git diff --name-only --no-renames base`` plus untracked files."""
+    changed = git(repo, "diff", "--name-only", "--no-renames", base).splitlines()
+    return sorted({p for p in changed + untracked(repo) if p and not is_noise(p)})
 
 
 Snapshot = dict[str, "bytes | None"]
@@ -131,22 +140,21 @@ def restore(repo: Path, base: str, paths: Iterable[str], before: Snapshot) -> No
 
 
 def _exists_in(repo: Path, rev: str, path: str) -> bool:
-    return subprocess.run(["git", "cat-file", "-e", f"{rev}:{path}"], cwd=repo, capture_output=True).returncode == 0
+    return subprocess.run(["git", *config.GIT_SAFE, "cat-file", "-e", f"{rev}:{path}"], cwd=repo,
+                          capture_output=True, env=config.scrubbed_env()).returncode == 0
 
 
 def reset_to_base(repo: Path, base: str) -> None:
-    """Return every dirty path to its ``base`` content (fresh start after a new design)."""
-    restore(repo, base, dirty_paths(repo, base), {})
+    """Return every dirty path under the agent-editable areas (package, tests) to its ``base`` content."""
+    areas = (config.TARGET_PACKAGE + "/", "tests/")
+    restore(repo, base, [p for p in dirty_paths(repo, base) if p.startswith(areas)], {})
 
 
 def patch(repo: Path, base: str, prefixes: list[str]) -> str:
     """Unified diff vs ``base`` for paths under ``prefixes``, including untracked files."""
-    out = git(repo, "diff", "--binary", base, "--", *prefixes)
-    for p in git(repo, "ls-files", "--others", "--exclude-standard", "--", *prefixes).splitlines():
-        if p and not is_noise(p):
-            proc = subprocess.run(["git", "diff", "--no-index", "--binary", "/dev/null", p], cwd=repo,
-                                  capture_output=True, text=True)
-            out += proc.stdout
+    out = git(repo, "diff", "--binary", "--no-renames", base, "--", *prefixes)
+    for p in untracked(repo, *prefixes):
+        out += git(repo, "diff", "--no-index", "--binary", "/dev/null", p, check=False)
     return out
 
 
@@ -409,3 +417,8 @@ def review_route(review: dict[str, Any]) -> str | None:
         if cat in cats:
             return stage
     return None
+
+
+def committed_paths(repo: Path, base: str) -> list[str]:
+    """Paths changed between ``base`` and ``HEAD`` (the final pre-push gate, DESIGN §10)."""
+    return sorted(p for p in git(repo, "diff", "--name-only", "--no-renames", base, "HEAD").splitlines() if p)

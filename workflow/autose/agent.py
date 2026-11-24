@@ -117,16 +117,20 @@ def _strip_fences(text: str) -> str:
     return m.group(1) if m else text
 
 
-def parse_envelope(env: dict[str, Any], schema: dict[str, Any], model: str = "", seconds: float = 0.0) -> AgentResult:
+def parse_envelope(env: dict[str, Any], schema: dict[str, Any], model: str = "", seconds: float = 0.0,
+                   fallback_cost: float = 0.0) -> AgentResult:
     """Turn a ``--output-format json`` envelope into an :class:`AgentResult`.
 
     Defensive: falls back to JSON-parsing ``result`` (fences stripped) when
-    ``structured_output`` is missing, then validates against the schema.
+    ``structured_output`` is missing, then validates against the schema. An envelope
+    without ``total_cost_usd`` (timeout, crash, unparseable output) is charged
+    ``fallback_cost``, the role's full per-call cap, so the run cap stays conservative.
     """
     usage = env.get("usage") or {}
+    cost = env.get("total_cost_usd")
     res = AgentResult(
         ok=False, output=None, error=None, subtype=str(env.get("subtype", "unknown")),
-        cost_usd=float(env.get("total_cost_usd") or 0.0),
+        cost_usd=float(cost) if cost is not None else fallback_cost,
         tokens_in=int(usage.get("input_tokens") or 0), tokens_out=int(usage.get("output_tokens") or 0),
         cache_read=int(usage.get("cache_read_input_tokens") or 0),
         cache_creation=int(usage.get("cache_creation_input_tokens") or 0),
@@ -156,13 +160,9 @@ def parse_envelope(env: dict[str, Any], schema: dict[str, Any], model: str = "",
     return res
 
 
-#: Environment variables that never reach an agent (DESIGN §6, ADR-005 layer 2).
-_SECRET_ENV = {"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
-
-
 def agent_env(path_prefix: str | None = None) -> dict[str, str]:
-    """os.environ minus GitHub tokens and every ``ACTIONS_*`` runtime token/URL."""
-    env = {k: v for k, v in os.environ.items() if k not in _SECRET_ENV and not k.startswith("ACTIONS_")}
+    """:func:`config.scrubbed_env` (no GitHub tokens, no ``ACTIONS_*``, no ``GITHUB_ENV``/``OUTPUT``/…)."""
+    env = config.scrubbed_env()
     env["DISABLE_UPDATES"] = "1"
     env["DISABLE_AUTOUPDATER"] = "1"
     if path_prefix:
@@ -173,10 +173,6 @@ def agent_env(path_prefix: str | None = None) -> dict[str, str]:
 SANDBOX_SETTINGS = {"sandbox": {"enabled": True, "failIfUnavailable": True,
                                 "network": {"allowedDomains": []},
                                 "credentials": {"envVars": [{"name": "ANTHROPIC_API_KEY", "mode": "deny"}]}}}
-#: Above this size the task goes over stdin, not argv (Linux MAX_ARG_STRLEN is 128 KiB).
-_ARGV_LIMIT = 100_000
-
-
 class ClaudeRunner:
     """Runs the pinned Claude Code CLI headless (ADR-011)."""
 
@@ -185,10 +181,8 @@ class ClaudeRunner:
 
     def argv(self, call: AgentCall, system_file: Path) -> list[str]:
         r = call.role
-        args = [self.executable, "-p"]
-        if len(call.task) <= _ARGV_LIMIT:
-            args.append(call.task)
-        args += ["--bare", "--no-session-persistence", "--model", r.model, "--effort", r.effort,
+        # The task always goes over stdin: no E2BIG on large diffs, no prompt text in `ps` output.
+        args = [self.executable, "-p", "--bare", "--restricted", "--strict-mcp-config", "--no-session-persistence", "--model", r.model, "--effort", r.effort,
                  "--tools", ",".join(r.tools), "--permission-mode", "dontAsk",
                  "--max-budget-usd", f"{r.budget_usd:.2f}", "--max-turns", str(r.max_turns),
                  "--output-format", "json", "--json-schema", json.dumps(call.schema, separators=(",", ":")),
@@ -209,14 +203,15 @@ class ClaudeRunner:
         system_file.write_text(call.system_prompt)
         (call.log_dir / f"{call.label}.task.md").write_text(call.task)
         argv = self.argv(call, system_file)
-        stdin = call.task if len(call.task) > _ARGV_LIMIT else None
         try:
-            proc = subprocess.run(argv, cwd=call.cwd, env=agent_env(call.path_prefix), input=stdin,
+            proc = subprocess.run(argv, cwd=call.cwd, env=agent_env(call.path_prefix), input=call.task,
                                   capture_output=True, text=True, timeout=call.role.timeout_s)
         except subprocess.TimeoutExpired:
             return {"is_error": True, "subtype": "error_timeout", "result": f"killed after {call.role.timeout_s}s"}
         except FileNotFoundError:
             return {"is_error": True, "subtype": "error_no_cli", "result": f"{self.executable} not found"}
+        except OSError as exc:  # e.g. E2BIG, permission denied
+            return {"is_error": True, "subtype": "error_os", "result": f"could not start {self.executable}: {exc}"}
         (call.log_dir / f"{call.label}.stdout.json").write_text(proc.stdout)
         (call.log_dir / f"{call.label}.stderr.txt").write_text(proc.stderr[-20000:])
         try:  # parse stdout even on non-zero exit: budget/turn errors still emit an envelope
@@ -256,7 +251,7 @@ class FakeRunner:
             return {"is_error": True, "subtype": "error_during_execution", "result": f"fake: no step for {call.role.name}"}
         step = queue.pop(0)
         if "patch" in step:
-            subprocess.run(["git", "apply", "--whitespace=nowarn", str(self.dir / step["patch"])],
+            subprocess.run(["git", *config.GIT_SAFE, "apply", "--whitespace=nowarn", str(self.dir / step["patch"])],
                            cwd=call.cwd, check=True)
         for rel, src in step.get("write", {}).items():
             dest = call.cwd / rel
@@ -278,7 +273,8 @@ def run_agent(runner: Runner, call: AgentCall) -> AgentResult:
     """Invoke the agent and parse + validate its envelope."""
     start = time.monotonic()
     env = runner.invoke(call)
-    return parse_envelope(env, call.schema, model=call.role.model, seconds=time.monotonic() - start)
+    return parse_envelope(env, call.schema, model=call.role.model, seconds=time.monotonic() - start,
+                          fallback_cost=call.role.budget_usd)
 
 
 def scratch_dir(prefix: str) -> Path:

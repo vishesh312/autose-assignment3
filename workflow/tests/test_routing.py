@@ -54,10 +54,12 @@ def test_no_progress() -> None:
 
 
 def test_rework_reservation() -> None:
-    # S3 rework needs developer 1.50 + tester 1.00 + reviewer 2.00 = 4.50 under a $10 cap
+    # S3 rework: developer 1.50 + tester 1.00 + review reserve (one reviewer cap 2.00) = 4.50 under $10
     assert pipeline.rework_affordable(5.5, "S3") == (True, 4.5)
     assert not pipeline.rework_affordable(5.6, "S3")[0]
+    # S2 rework adds the architect (0.75): 5.25, so the first approach send-back fits after a typical $2.85 run
     assert pipeline.rework_affordable(4.75, "S2")[0] and not pipeline.rework_affordable(4.8, "S2")[0]
+    assert pipeline.rework_affordable(2.85, "S2")[0]
 
 
 def _rv(name: str) -> dict[str, Any]:

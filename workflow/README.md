@@ -35,6 +35,36 @@ reasons behind it are in `../architecture/decisions/`.
 | S5 | code | push with lease, PR open, CI (`autose-ci`) success |
 | S6 | Reviewer (separate job, no token) | schema + evidence rules; only blocking findings route (approach → S2, code → S3, tests → S4), at most 2 send-backs |
 
+## How a build or rework job is split (security)
+
+Each build and rework job runs three steps, so the model key and the GitHub token are never in the same process:
+
+1. **prepare** (has `GH_TOKEN`): writes `issue.json` (title, body, comments from write-access users) and
+   `branch.json` (the result of the human-commit check) to `$AUTOSE_HOME/issue-<N>/input/`, and adds a "started" line to the status comment.
+2. **agent** (has `ANTHROPIC_API_KEY`, **no** GitHub token; the command refuses to run if one is present): runs S1–S4
+   offline from those files, then commits only `tinydb/**` and the test file (after `git reset`, so anything an agent staged is dropped).
+3. **publish** (has `GH_TOKEN`, no model key): runs a final gate (`git diff --name-only --no-renames base HEAD` must stay
+   inside the allowlist), sets up push credentials (in this step only), force-pushes with lease, creates or updates the PR,
+   and writes the trace comment, labels and status timeline.
+
+`$AUTOSE_HOME` is outside `work/`, and agents run with `--restricted`, so their file tools cannot read the
+artifacts. The reviewer's probe directory is separate from its artifact directory. Every orchestrator `git` call
+runs with hooks and fsmonitor disabled and a scrubbed environment.
+
+### Residual concurrency race
+
+The workflow-level group `autose-<N>` serialises real triggers for the same issue or PR number. A label on issue
+#N and a `/autose` comment on its PR #M are different numbers, so two runs for the same canonical issue can
+interleave. Job-level groups were removed on purpose, because a pending job in such a group can cancel another
+run's pending round. What protects us instead:
+
+- `post-review` discards a review whose reviewed SHA is no longer the PR head (`stale`).
+- Pushes use `--force-with-lease` against the head that was just read.
+- The human-commit guard refuses to reset a branch that has non-bot commits.
+
+The worst remaining outcome is a wasted round, or one run's stale review being discarded. Wrong code is never
+merged, because a human merges.
+
 ## Running locally
 
 Requirements: Python ≥ 3.10 with `jsonschema` (plus `pytest` and `pyyaml` for the tests), and a tinydb
@@ -76,7 +106,7 @@ All artifacts go under `--home` (default `$AUTOSE_HOME` or `./.autose-home`): `i
 | `AUTOSE_HOME` | artifact directory | `./.autose-home` |
 | `AUTOSE_PYTHON` | interpreter of the target project (checks; its directory is put first on the agents' `PATH`) | `python` |
 | `AUTOSE_MODEL_<ROLE>`, `AUTOSE_EFFORT_<ROLE>`, `AUTOSE_BUDGET_<ROLE>`, `AUTOSE_MAX_TURNS_<ROLE>`, `AUTOSE_TIMEOUT_<ROLE>` | per-role overrides (`ANALYST`, `JUDGE`, `ARCHITECT`, `DEVELOPER`, `TESTER`, `REVIEWER`, `REVIEWER_FRIENDLY`, `BUILDER`); empty means unset | DESIGN §7 |
-| `AUTOSE_RUN_CAP_USD` | run cost cap | `10` |
+| `AUTOSE_RUN_CAP_USD` | run cost cap; build and rework always leave one Reviewer cap plus one re-ask free | `10` |
 | `AUTOSE_JOB_DEADLINE` | epoch seconds when the job is killed; no agent call starts with less than its timeout + `AUTOSE_DEADLINE_SLACK_MIN` (2) left | unset (no deadline) |
 | `AUTOSE_SANDBOX=1` | pass Claude Code sandbox settings (no network, `ANTHROPIC_API_KEY` denied to commands) | off |
 | `AUTOSE_FAKE` / `--fake DIR` | use `FakeRunner` with `DIR/script.json` | off |

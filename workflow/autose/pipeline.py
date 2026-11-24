@@ -74,8 +74,12 @@ def no_progress(prev: Fingerprint | None, cur: Fingerprint) -> bool:
 
 
 def rework_affordable(spent: float, route: str) -> tuple[bool, float]:
-    """ADR-006 reservation: spent + the route's agent caps + one Reviewer cap must fit the run cap."""
-    need = sum(config.role(r).budget_usd for r in config.REWORK_ROLES[route]) + config.role("reviewer").budget_usd
+    """ADR-006 reservation: spent + the route's agent caps + the review reserve must fit the run cap.
+
+    The reserve is one Reviewer cap (:func:`config.review_reserve`), the same amount
+    :meth:`Pipeline.call` keeps free, so a rework that starts can also be reviewed.
+    """
+    need = sum(config.role(r).budget_usd for r in config.REWORK_ROLES[route]) + config.review_reserve()
     return spent + need <= config.RUN_CAP_USD + 1e-9, need
 
 
@@ -107,9 +111,13 @@ class Pipeline:
     def __init__(self, issue: IssueInput, repo: Path, home: Path, runner: Runner, python: str,
                  variant: str = "split", can_revisit_design: bool = True,
                  on_update: Callable[["Pipeline"], None] | None = None, path_prefix: str | None = None,
-                 deadline: float | None = None) -> None:
+                 deadline: float | None = None, reserve_usd: float = 0.0) -> None:
         self.issue = issue
         self.repo = repo.resolve()
+        if home.resolve().is_relative_to(self.repo):
+            # ADR-003: agents' file tools are confined to the repo (--restricted); artifacts must live outside.
+            raise ValueError(f"AUTOSE_HOME {home} must be outside the working tree {self.repo}")
+        self.reserve_usd = reserve_usd
         self.dir = home / f"issue-{issue.number}"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.runner, self.python, self.variant = runner, python, variant
@@ -177,11 +185,15 @@ class Pipeline:
     def call(self, role_name: str, stage: str, values: dict[str, str], label: str,
              add_dirs: list[str] | None = None, allowed: list[str] | None = None,
              task_suffix: str = "") -> AgentResult:
-        """One agent call guarded by the run cap and job deadline (ADR-006, ADR-009)."""
+        """One agent call guarded by the run cap and job deadline (ADR-006, ADR-009).
+
+        ``reserve_usd`` (build/rework: one Reviewer cap + one re-ask) is never spent here.
+        """
         role = config.role(role_name)
-        if self.state.cost_usd + role.budget_usd > config.RUN_CAP_USD:
+        if self.state.cost_usd + role.budget_usd + self.reserve_usd > config.RUN_CAP_USD + 1e-9:
             raise self.stop(stage, f"run cost cap: ${self.state.cost_usd:.2f} spent + ${role.budget_usd:.2f} "
-                                   f"{role_name} cap would exceed ${config.RUN_CAP_USD:.2f}")
+                                   f"{role_name} cap + ${self.reserve_usd:.2f} review reserve would exceed "
+                                   f"${config.RUN_CAP_USD:.2f}")
         if self.deadline and time.time() + role.timeout_s + config.DEADLINE_SLACK_MIN * 60 > self.deadline:
             raise self.stop(stage, "job deadline: not enough time left for another agent call")
         system, task = load_prompts(role.prompt, values)
@@ -328,7 +340,7 @@ class Pipeline:
         self.check("S3", result.passed, result.reason, actor=actor)
         return result
 
-    def tester_attempt(self, spec: dict[str, Any], context: str) -> checks.CheckResult:
+    def tester_attempt(self, spec: dict[str, Any], context: str, findings: str = "") -> checks.CheckResult:
         """One Tester attempt and the Tester's own check (allowlist, AC mapping, collection, fails-on-base)."""
         n = self.bump("S4")
         design = self.read_json("design.json") or {}
@@ -336,7 +348,7 @@ class Pipeline:
         res = self.call("tester", "S4", {
             "ISSUE_NUMBER": str(self.issue.number), "TEST_FILE": self.test_file,
             "ACCEPTANCE_CRITERIA_MD": render.acceptance_md(spec), "PUBLIC_API_MD": render.public_api_md(design),
-            "CONTESTED_TESTS": context}, f"tester-r{self.state.round}-d{self.state.design_revisits}-{n}")
+            "CONTESTED_TESTS": context, "REVIEW_FINDINGS": findings or "none"}, f"tester-r{self.state.round}-d{self.state.design_revisits}-{n}")
         after = checks.snapshot(self.repo, self.state.base_sha)
         changed = checks.touched(before, after)
         bad = checks.path_violations(changed, [self.test_file])
@@ -391,12 +403,12 @@ class Pipeline:
         """S4 -> S2 once with failure_summary.md; the new design starts from a clean tree."""
         self.state.design_revisits += 1
         loop = (self.dir / "design.md").read_text() + "\n\n" + self.failure_summary(reason)
+        checks.reset_to_base(self.repo, self.state.base_sha)  # the new design is checked against base
         self.design(spec, loop)
-        checks.reset_to_base(self.repo, self.state.base_sha)
 
     # ------------------------------------------------------------ S3 -> S4 loop (split variant)
     def implement_and_test(self, spec: dict[str, Any], entry: str = "S3", retry: str = "",
-                           tests_ready: bool = False, tester_context: str = "") -> None:
+                           tests_ready: bool = False, tester_context: str = "", review_findings: str = "") -> None:
         """Run S3/S4 until the S4 check passes, or raise :class:`Stop` (DESIGN §2.1)."""
         if self.variant == "single":
             return self.build_single(spec, retry)
@@ -422,7 +434,7 @@ class Pipeline:
                     tests_ready, tester_context = False, "\n".join(f"- {c['test_id']}: {c['reason']}" for c in fresh)
             need_dev = True
             if not tests_ready:
-                result = self.tester_attempt(spec, tester_context)
+                result = self.tester_attempt(spec, tester_context, review_findings)
                 if not result.passed:
                     nxt = next_stage("S4", "tester_fail", self.counters())
                     self.route("S4", nxt, result.reason)
@@ -431,10 +443,20 @@ class Pipeline:
                                               f"{result.reason}")
                     tester_context, need_dev = f"Your previous attempt failed the check:\n{result.reason}", False
                     continue
-                tests_ready, tester_context = True, ""
+                tests_ready, tester_context, review_findings = True, "", ""
             else:  # kept tests: re-run fails-on-base against the current base (DESIGN §2.1 code send-back)
                 fob = checks.fails_on_base(self.repo, self.state.base_sha, self.test_file, self.python)
                 self.last_fob = {"passed": fob.passed, "reason": fob.reason}
+                self.record("orchestrator", "S4 fails-on-base (kept tests)", fob.passed, fob.reason)
+                if not fob.passed:  # a Tester-own check failure: S4 retry (DESIGN §2.1)
+                    self.check("S4", False, fob.reason)
+                    nxt = next_stage("S4", "tester_fail", self.counters())
+                    self.route("S4", nxt, fob.reason)
+                    if nxt == "stop":
+                        raise self.stop("S4", f"Tester attempts exhausted: {fob.reason}")
+                    tests_ready, need_dev = False, False
+                    tester_context = f"Your kept tests failed the orchestrator's check:\n{fob.reason}"
+                    continue
             result, failing, tester_fault = self.suite_check()
             self.write_report()
             if result.passed:
@@ -548,8 +570,8 @@ class Pipeline:
         if route == "S2":
             loop = (self.dir / "design.md").read_text() + "\n\nReviewer findings (approach):\n" + \
                 render.findings_md(review, {"approach"})
+            checks.reset_to_base(self.repo, self.state.base_sha)  # design against base; Tester regenerates tests
             self.design(spec, loop)
-            checks.reset_to_base(self.repo, self.state.base_sha)  # the Tester regenerates its tests
             self.implement_and_test(spec)
         elif route == "S3":
             self.state.attempts["S3"] = 0
@@ -558,12 +580,19 @@ class Pipeline:
         else:
             self.state.attempts["S4"] = 0
             self.implement_and_test(spec, entry="S4", tests_ready=False,
-                                    tester_context="Reviewer findings (tests):\n" + render.findings_md(review, {"tests"}))
+                                    review_findings=render.findings_md(review, {"tests"}))
 
     # ------------------------------------------------------------ S5 (deterministic)
     def commit(self, message: str) -> str:
-        """Commit only allowlisted paths with the bot identity; return HEAD."""
-        checks.git(self.repo, "add", "-A", "--", config.TARGET_PACKAGE, self.test_file)
+        """Commit only allowlisted paths with the bot identity; return HEAD.
+
+        ``git reset`` first, so nothing an agent staged (``git add``) outside the allowlist rides along.
+        """
+        checks.git(self.repo, "reset", "-q")
+        paths = [config.TARGET_PACKAGE]
+        if (self.repo / self.test_file).exists() or checks.git(self.repo, "ls-files", "--", self.test_file).strip():
+            paths.append(self.test_file)
+        checks.git(self.repo, "add", "-A", "--", *paths)
         if checks.git(self.repo, "diff", "--cached", "--name-only").strip():
             checks.git(self.repo, "-c", f"user.name={config.BOT_NAME}", "-c", f"user.email={config.BOT_EMAIL}",
                        "commit", "-q", "-m", message)

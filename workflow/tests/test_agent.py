@@ -63,7 +63,7 @@ def _stub(tmp_path: Path, envelope: dict, code: int = 0) -> Path:
     script.write_text(f"""#!/usr/bin/env python3
 import json, os, sys
 json.dump({{"argv": sys.argv[1:], "env": dict(os.environ), "cwd": os.getcwd(),
-           "stdin": sys.stdin.read() if "-p" in sys.argv and len(sys.argv) > 2 and sys.argv[2].startswith("--") else ""}},
+           "stdin": sys.stdin.read()}},
           open({str(log)!r}, "w"))
 print({json.dumps(json.dumps(envelope))})
 sys.exit({code})
@@ -77,6 +77,8 @@ def test_claude_runner_argv_env_and_nonzero_exit(tmp_path: Path, monkeypatch: py
     monkeypatch.setenv("GITHUB_TOKEN", "secret-gh2")
     monkeypatch.setenv("ACTIONS_RUNTIME_TOKEN", "secret-rt")
     monkeypatch.setenv("AUTOSE_SANDBOX", "1")
+    for k in ("GITHUB_ENV", "GITHUB_OUTPUT", "GITHUB_PATH", "GITHUB_STEP_SUMMARY"):
+        monkeypatch.setenv(k, "/tmp/x")
     stub = _stub(tmp_path, {"is_error": True, "subtype": "error_max_turns", "structured_output": {"a": 3},
                             "total_cost_usd": 0.2}, code=1)
     role = config.role("reviewer")
@@ -86,7 +88,8 @@ def test_claude_runner_argv_env_and_nonzero_exit(tmp_path: Path, monkeypatch: py
     res = agent.run_agent(agent.ClaudeRunner(str(stub)), call)
     seen = json.loads((tmp_path / "argv.json").read_text())
     argv = seen["argv"]
-    assert argv[:2] == ["-p", "do it"]
+    assert argv[:4] == ["-p", "--bare", "--restricted", "--strict-mcp-config"]
+    assert seen["stdin"] == "do it" and "do it" not in argv  # task always over stdin
     for flag in ("--bare", "--no-session-persistence", "--output-format", "--json-schema",
                  "--append-system-prompt-file", "--max-budget-usd", "--max-turns", "--settings"):
         assert flag in argv
@@ -98,7 +101,8 @@ def test_claude_runner_argv_env_and_nonzero_exit(tmp_path: Path, monkeypatch: py
     assert "Bash(python /probe/*)" in allowed and "Bash(python -m pytest *)" in allowed
     assert json.loads(argv[argv.index("--json-schema") + 1]) == SCHEMA
     assert "sandbox" in json.loads(argv[argv.index("--settings") + 1])
-    assert not {"GH_TOKEN", "GITHUB_TOKEN", "ACTIONS_RUNTIME_TOKEN"} & set(seen["env"])
+    assert not {"GH_TOKEN", "GITHUB_TOKEN", "ACTIONS_RUNTIME_TOKEN", "GITHUB_ENV", "GITHUB_OUTPUT", "GITHUB_PATH",
+                "GITHUB_STEP_SUMMARY"} & set(seen["env"])
     assert seen["env"]["DISABLE_UPDATES"] == "1"
     assert Path(seen["cwd"]).resolve() == tmp_path.resolve()
     # non-zero exit still parsed; max-turns is not ok even with an answer
@@ -107,13 +111,25 @@ def test_claude_runner_argv_env_and_nonzero_exit(tmp_path: Path, monkeypatch: py
 
 def test_claude_runner_large_task_goes_over_stdin(tmp_path: Path) -> None:
     stub = _stub(tmp_path, {"subtype": "success", "structured_output": {"a": 1}})
-    call = agent.AgentCall(role=config.role("judge"), system_prompt="S", task="x" * 200_000, schema=SCHEMA,
+    call = agent.AgentCall(role=config.role("judge"), system_prompt="S", task="x" * 3_000_000, schema=SCHEMA,
                            cwd=tmp_path, log_dir=tmp_path / "logs", label="j")
     res = agent.run_agent(agent.ClaudeRunner(str(stub)), call)
     seen = json.loads((tmp_path / "argv.json").read_text())
-    assert res.ok and len(seen["stdin"]) == 200_000 and seen["argv"][1] == "--bare"
+    assert res.ok and len(seen["stdin"]) == 3_000_000
     assert "--allowedTools" not in seen["argv"]  # judge has no tools at all
     assert seen["argv"][seen["argv"].index("--tools") + 1] == ""
+
+
+def test_missing_cost_is_charged_at_the_cap(tmp_path: Path) -> None:
+    """Timeouts, crashes and OS errors have no total_cost_usd: charge the role's full cap (fix #3c, #13)."""
+    bad = tmp_path / "claude"
+    bad.write_text("not executable")  # PermissionError (an OSError) when started
+    call = agent.AgentCall(role=config.role("developer"), system_prompt="S", task="t", schema=SCHEMA,
+                           cwd=tmp_path, log_dir=tmp_path / "logs", label="d")
+    res = agent.run_agent(agent.ClaudeRunner(str(bad)), call)
+    assert not res.ok and res.subtype == "error_os" and res.cost_usd == config.role("developer").budget_usd
+    res = agent.run_agent(agent.ClaudeRunner(str(tmp_path / "missing")), call)
+    assert res.subtype == "error_no_cli" and res.cost_usd == 1.5
 
 
 def test_role_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:

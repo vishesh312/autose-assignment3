@@ -123,8 +123,10 @@ def trace_comment(marker: str, spec_text: str, design_text: str, report_text: st
 VERDICT_HEADER = {"approve": "APPROVE", "changes_requested": "REQUEST_CHANGES"}
 
 
-def review_md(review: dict[str, Any], round_no: int, final: bool, note: str = "") -> str:
-    head = VERDICT_HEADER.get(review["verdict"], review["verdict"].upper())
+def review_md(review: dict[str, Any], round_no: int, final: bool, note: str = "", invalid: bool = False) -> str:
+    """The posted PR review. An invalid review never shows an APPROVE header (DESIGN §2.1)."""
+    head = "INVALID REVIEW (not an approval)" if invalid else \
+        VERDICT_HEADER.get(review["verdict"], review["verdict"].upper())
     out = [f"## AutoSE review (round {round_no}{', final' if final else ''}): **{head}**\n"]
     if note:
         out.append(f"> {note}\n")
@@ -157,28 +159,38 @@ def findings_md(review: dict[str, Any], categories: set[str] | None = None, bloc
     return "\n".join(lines)
 
 
-STAGES = [("S1", "Requirements"), ("S2", "Design"), ("S3", "Implementation"), ("S4", "Testing"),
-          ("S5", "Release"), ("S6", "Review")]
+TIMELINE_HEADER = "#### Timeline"
 
 
-def status_comment(marker: str, issue: int, records: list[dict[str, Any]], status: str, extra: str = "",
-                   run_url: str = "", pr_url: str = "") -> str:
-    """Sticky status comment body: one row per stage, last check wins (DESIGN §5)."""
-    last: dict[str, dict[str, Any]] = {}
+def parse_timeline(body: str) -> list[str]:
+    """Timeline lines (``- ...``) of a previous status comment, kept verbatim (append-only history)."""
+    if TIMELINE_HEADER not in body:
+        return []
+    tail = body.split(TIMELINE_HEADER, 1)[1]
+    return [ln for ln in tail.splitlines() if ln.startswith("- ")]
+
+
+def timeline_from_ledger(records: list[dict[str, Any]], job: str) -> list[str]:
+    """One timeline line per check/stop event of this job's ledger."""
+    out = []
     for r in records:
-        if r["event"] in ("check", "stop"):
-            last[r["stage"]] = r
-    cost = sum(r.get("cost_usd", 0.0) for r in records)
-    out = [marker, f"### AutoSE status for #{issue}: **{status}**\n", "| Stage | Result | Detail |", "|---|---|---|"]
-    for sid, name in STAGES:
-        row = last.get(sid)
-        res = "-" if row is None else ("pass" if row["passed"] else ("stopped" if row["event"] == "stop" else "fail"))
-        out.append(f"| {sid} {name} | {res} | {_cell((row or {}).get('reason', ''))[:200]} |")
-    out.append(f"\nCost so far (this job's ledger): ${cost:.2f}")
+        if r["event"] not in ("check", "stop"):
+            continue
+        res = "stopped" if r["event"] == "stop" else ("pass" if r["passed"] else "fail")
+        who = "" if r["actor"] == "orchestrator" else f" ({r['actor']})"
+        out.append(f"- {r['ts'][11:16]} {job} {r['stage']}{who}: **{res}** {_cell(r['reason'])[:160]}")
+    return out
+
+
+def status_comment(marker: str, issue: int, status: str, timeline: list[str], cost_usd: float | None = None,
+                   run_url: str = "", pr_url: str = "") -> str:
+    """Sticky status comment: current status + links + an append-only timeline (DESIGN §5)."""
+    out = [marker, f"### AutoSE status for #{issue}: **{status}**\n"]
     if pr_url:
-        out.append(f"\nPR: {pr_url}")
+        out.append(f"PR: {pr_url}  ")
     if run_url:
-        out.append(f"\nRun: {run_url}")
-    if extra:
-        out.append("\n" + extra)
+        out.append(f"Latest run: {run_url}  ")
+    if cost_usd is not None:
+        out.append(f"Spent so far in this run: ${cost_usd:.2f}")
+    out += ["", TIMELINE_HEADER, ""] + timeline[-150:]
     return "\n".join(out) + "\n"

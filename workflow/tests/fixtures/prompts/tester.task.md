@@ -13,3 +13,6 @@
 <contested_tests>
 {{CONTESTED_TESTS}}
 </contested_tests>
+<review_findings>
+{{REVIEW_FINDINGS}}
+</review_findings>

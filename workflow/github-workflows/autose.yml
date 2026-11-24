@@ -21,9 +21,12 @@ on:
 # Grants nothing; every job declares what it needs (DESIGN §10.1).
 permissions: {}
 
-# Only real triggers queue per issue; anything else gets its own group and exits in the gate (DESIGN §11).
+# Only real triggers from trusted people queue per issue; anything else (unrelated comments, comments by
+# non-collaborators) gets its own group and exits in the gate, so it can never cancel a queued run
+# (DESIGN §11, ADR-010). There are deliberately no job-level groups: they could cancel another run's
+# pending rounds. The residual cross-run race is handled by stale-SHA discard (see README).
 concurrency:
-  group: ${{ ((github.event_name == 'issues' && github.event.label.name == 'autose') || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/autose'))) && format('autose-{0}', github.event.issue.number) || format('autose-noop-{0}', github.run_id) }}
+  group: ${{ ((github.event_name == 'issues' && github.event.label.name == 'autose') || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/autose') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) && format('autose-{0}', github.event.issue.number) || format('autose-noop-{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:
@@ -78,13 +81,11 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
-    concurrency:
-      group: autose-canonical-${{ needs.gate.outputs.issue }}
-      cancel-in-progress: false
     outputs:
       status: ${{ steps.build.outputs.status }}
       pr: ${{ steps.build.outputs.pr }}
       head_sha: ${{ steps.build.outputs.head_sha }}
+      spent_usd: ${{ steps.build.outputs.spent_usd }}
     steps:
       - name: Job deadline for the orchestrator (ADR-009)
         run: echo "AUTOSE_JOB_DEADLINE=$(( $(date +%s) + 60*60 ))" >> "$GITHUB_ENV"
@@ -112,11 +113,16 @@ jobs:
           node-version: "22"
       - name: Install pinned Claude Code CLI
         run: npm install -g @anthropic-ai/claude-code@2.1.331
-      - name: Build (S1 spec, S2 design, S3 implement, S4 test, S5 push + PR)
-        id: build
+      - name: Sandbox prerequisites
+        if: vars.AUTOSE_SANDBOX == '1'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap socat
+      - name: Prepare (token; issue + trusted comments + branch check to files)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -m autose build --phase prepare --issue "${{ needs.gate.outputs.issue }}" --repo-dir work
+      - name: Agents S1-S4 (NO GitHub token in this step)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GH_TOKEN: ${{ github.token }}   # stripped from every agent's environment by the orchestrator
           AUTOSE_PYTHON: python
           AUTOSE_SANDBOX: ${{ vars.AUTOSE_SANDBOX }}
           AUTOSE_MODEL_ANALYST: ${{ vars.AUTOSE_MODEL_ANALYST }}
@@ -124,7 +130,13 @@ jobs:
           AUTOSE_MODEL_ARCHITECT: ${{ vars.AUTOSE_MODEL_ARCHITECT }}
           AUTOSE_MODEL_DEVELOPER: ${{ vars.AUTOSE_MODEL_DEVELOPER }}
           AUTOSE_MODEL_TESTER: ${{ vars.AUTOSE_MODEL_TESTER }}
-        run: python -m autose build --issue "${{ needs.gate.outputs.issue }}" --repo-dir work
+        run: python -m autose build --phase agent --issue "${{ needs.gate.outputs.issue }}" --repo-dir work
+      - name: Publish S5 (token; final allowlist gate, push, PR, labels, status)
+        id: build
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -m autose build --phase publish --issue "${{ needs.gate.outputs.issue }}" --repo-dir work
       - name: Upload build artifacts (also on stop paths)
         if: always()
         uses: actions/upload-artifact@v4
@@ -144,9 +156,6 @@ jobs:
       pull-requests: write
       issues: write
       statuses: write
-    concurrency:
-      group: autose-canonical-${{ needs.gate.outputs.issue }}
-      cancel-in-progress: false
     uses: ./.github/workflows/autose-round.yml
     with:
       issue: ${{ needs.gate.outputs.issue }}
@@ -157,6 +166,7 @@ jobs:
       route: ""
       final: ${{ needs.gate.outputs.mode == 'review' }}
       state_artifact: ""
+      spent_usd: ${{ needs.build.outputs.spent_usd || '0' }}
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
@@ -170,9 +180,6 @@ jobs:
       pull-requests: write
       issues: write
       statuses: write
-    concurrency:
-      group: autose-canonical-${{ needs.gate.outputs.issue }}
-      cancel-in-progress: false
     uses: ./.github/workflows/autose-round.yml
     with:
       issue: ${{ needs.gate.outputs.issue }}
@@ -196,9 +203,6 @@ jobs:
       pull-requests: write
       issues: write
       statuses: write
-    concurrency:
-      group: autose-canonical-${{ needs.gate.outputs.issue }}
-      cancel-in-progress: false
     uses: ./.github/workflows/autose-round.yml
     with:
       issue: ${{ needs.gate.outputs.issue }}
@@ -218,6 +222,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      contents: read
       issues: write
       pull-requests: write
     steps:
