@@ -1,0 +1,64 @@
+{
+  "approach": "Change only Query.fragment so its query identity includes the complete field path alongside the operator and frozen fragment. This follows existing query operators and lets the existing equality and LRU cache mechanisms distinguish paths. Keep fragment evaluation, cache management, storage, and public signatures unchanged; preserve get's already-correct behavior with regression coverage.",
+  "changes": [
+    {
+      "path": "tinydb/queries.py",
+      "symbol": "Query.fragment",
+      "kind": "modify",
+      "new_file": false,
+      "description": "At the existing _generate_test call, replace ('fragment', freeze(document)) with ('fragment', self._path, freeze(document)). Preserve the matching function, allow_empty_path=True, and existing signature. The complete path, including an empty or nested path, must participate in query identity. Retain existing freezing and non-cacheable fallback through _generate_test and QueryInstance; do not change those helpers or Table. AC-5 is regression coverage for behavior already satisfied by Table.get.",
+      "acs": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4",
+        "AC-5"
+      ]
+    }
+  ],
+  "public_api": [
+    {
+      "signature": "Query.fragment(self, document: Mapping) -> QueryInstance",
+      "behaviour": "Returns a callable fragment query for the selected field path, or the whole document when no path is selected. Matching retains existing semantics: every fragment key must exist with an equal value; additional document keys are allowed. For {'city': 'Paris'}, home and work queries compare unequal. Independently constructed queries with the same path and equal fragment remain equal. Ordinary mapping fragments remain cacheable."
+    },
+    {
+      "signature": "QueryInstance.__eq__(self, other: object)",
+      "behaviour": "Returns a boolean. Query().home.fragment({'city': 'Paris'}) == Query().work.fragment({'city': 'Paris'}) returns False. This existing method has no return annotation and requires no modification."
+    },
+    {
+      "signature": "Table.search(self, cond: QueryLike) -> list[Document]",
+      "behaviour": "Available as db.search through TinyDB's default-table forwarding. With only {'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}} inserted, searching home for {'city': 'Paris'} returns a one-element list equal to the inserted document list, and searching work returns []. These results hold in either search order without intervening writes or cache clearing."
+    },
+    {
+      "signature": "Table.count(self, cond: QueryLike) -> int",
+      "behaviour": "Available as db.count. With the specified single document, after a successful home fragment search, counting the work fragment {'city': 'Paris'} returns 0 without intervening writes or cache clearing."
+    },
+    {
+      "signature": "Table.get(self, cond: Optional[QueryLike] = None, doc_id: Optional[int] = None, doc_ids: Optional[list] = None)",
+      "behaviour": "Available as db.get. For a condition, returns the first matching Document or None if no document matches. With the specified single document, after a successful home fragment search, getting the work fragment {'city': 'Paris'} returns None without intervening writes or cache clearing. This behavior already works; preserve it. The existing implementation has no return annotation."
+    }
+  ],
+  "test_hooks": [
+    "Import Query and TinyDB from tinydb, and MemoryStorage from tinydb.storages.",
+    "For each of AC-2 through AC-5, construct a fresh TinyDB(storage=MemoryStorage) and insert exactly {'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}} before the setup search.",
+    "Do not use the existing db fixture for these criteria: it prepopulates unrelated documents and parametrizes storage.",
+    "Assert each setup search result before the tested action. Make no writes or clear_cache calls between those operations, and retain the default enabled query cache.",
+    "Use separate database instances for the two search orders, count, and get. Document objects compare equal to ordinary dictionaries; use `is None` for AC-5.",
+    "Useful compatibility checks are equality of independently constructed same-path fragment queries, nested field paths, and the existing root-level fragment matching behavior. Do not assert that unequal queries must have different integer hashes."
+  ],
+  "risks": [
+    "AC-5 already passes because Table.get evaluates its condition directly; changing Table.get would add unnecessary scope.",
+    "The internal fragment query identity and its repr will gain a path component. Integer hashes are process-dependent and may collide, so tests should verify query inequality and returned results rather than exact hash values.",
+    "Preserve existing handling of unsupported fragment values and non-cacheable paths; do not broaden matching semantics or introduce new exceptions.",
+    "No instructions directed at the agent or pipeline were found in the inspected repository content."
+  ],
+  "architecture_refs": [
+    "ARCHITECTURE.md \u00a73 Constraint 1: queries.py retains its existing utils-only package dependency; package import order is unchanged.",
+    "ARCHITECTURE.md \u00a73 Constraint 2 and ADR-1: no persistence changes; full-database Storage.read()/write() and None-as-empty handling remain intact.",
+    "ARCHITECTURE.md \u00a73 Constraint 3: no write paths are introduced or modified; existing cache invalidation remains intact.",
+    "ARCHITECTURE.md \u00a73 Constraint 4 and ADR-3: fragment identity includes every semantic parameter\u2014operator, full path, and frozen fragment\u2014while retaining the existing unhashable-to-None fallback and table LRU cache.",
+    "ARCHITECTURE.md \u00a73 Constraint 5: document-ID conversion and monotonic allocation are unaffected.",
+    "ARCHITECTURE.md ADR-2: storage middleware remains a callable wrapper; no middleware changes are needed."
+  ],
+  "design_md": "## Approach\n\nInclude the full field path in fragment query identity. `Query.fragment` currently supplies `('fragment', freeze(document))` at `tinydb/queries.py:499`; replace it with `('fragment', self._path, freeze(document))`. Keep evaluation and `allow_empty_path=True` unchanged.\n\n`QueryInstance.__eq__` compares identities (`queries.py:108\u2013110`), and `Table.search` uses query objects as cache keys (`table.py:262\u2013295`). `Table.count` delegates to search (`table.py:709\u2013716`). Consequently, this single change fixes equality and both cache-dependent operations. `Table.get` already evaluates its condition directly and returns None on no match; retain that behavior.\n\n## Changes\n\n| Path | Symbol | Kind | ACs |\n| --- | --- | --- | --- |\n| tinydb/queries.py | Query.fragment | modify | AC-1, AC-2, AC-3, AC-4, AC-5 |\n\nNo helper, table, storage, or test-file implementation changes are planned.\n\n## Public API and test hooks\n\n- `Query.fragment(self, document: Mapping) -> QueryInstance`: produces a fragment query whose identity distinguishes the complete selected path. Same-path, equal-fragment queries remain equal; root-level matching remains supported.\n- `QueryInstance.__eq__(self, other: object)`: returns False for the specified home/work fragment comparison. Its existing signature has no return annotation.\n- `Table.search(self, cond: QueryLike) -> list[Document]`: returns the home document and no work documents in either search order.\n- `Table.count(self, cond: QueryLike) -> int`: returns 0 for work after the successful home search.\n- `Table.get(self, cond: Optional[QueryLike] = None, doc_id: Optional[int] = None, doc_ids: Optional[list] = None)`: preserves None for the work query after the home search. Its implementation has no return annotation.\n\nImport Query/TinyDB from tinydb and MemoryStorage from tinydb.storages. For each database criterion, create a fresh `TinyDB(storage=MemoryStorage)` and insert only `{'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}`. Avoid the prepopulated db fixture. Assert the setup search result, then perform the tested action with no writes or cache clearing. Default-table forwarding exposes search/count/get on db. Compare returned documents with dictionaries and check get using `is None`.\n\nUseful compatibility checks cover equal same-path queries, nested paths, and existing root fragment matching. Do not require different integer hashes for unequal queries.\n\n## Acceptance traceability\n\n- AC-1 \u2192 Query.fragment: home/work queries compare unequal.\n- AC-2 \u2192 Query.fragment: a cached home match cannot satisfy a work search.\n- AC-3 \u2192 Query.fragment: a cached empty work result cannot hide a home match.\n- AC-4 \u2192 Query.fragment: count obtains the correct work search result.\n- AC-5 \u2192 Query.fragment regression coverage: get retains its existing None result.\n\n## Architecture constraints\n\nConstraint 4 and ADR-3 govern the fix: identity includes operator, path, and frozen argument. Existing `_generate_test` propagation and `QueryInstance.__init__` fallback (`queries.py:76\u201385,249\u2013252`) retain non-cacheable behavior. Constraint 1 is respected without import changes. Constraints 2\u20133 and ADR-1 remain satisfied because persistence and write invalidation (`table.py:779\u2013854`) are untouched. Constraint 5's ID conversion and allocation are untouched. ADR-2's callable middleware contract is unaffected.\n\n## Risks\n\nThe internal fragment identity and repr change. Exact integer hashes are unsuitable assertions. AC-5 already passes and warrants no Table changes. Preserve existing matching and unsupported-value behavior. No agent-directed instructions were found in the inspected repository content."
+}

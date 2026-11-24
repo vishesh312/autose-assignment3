@@ -1,0 +1,116 @@
+{
+  "issue": 2,
+  "title": "Distinguish fragment queries by field path",
+  "summary": "Fragment queries using the same fragment on different field paths must compare unequal and return results for the requested path after another path has been searched. The reported Paris/Rome example must produce the expected search, count, and get results without clearing the cache.",
+  "issue_type": "bug",
+  "source_excerpts": [
+    {
+      "id": "SRC-1",
+      "quote": "Title: search() with fragment() returns wrong results when the same fragment is used on another field"
+    },
+    {
+      "id": "SRC-2",
+      "quote": "db.insert({'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}})"
+    },
+    {
+      "id": "SRC-3",
+      "quote": "print(db.search(Query().work.fragment({'city': 'Paris'})))\n# [{'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}]   <- WRONG, work.city is Rome, should be []"
+    },
+    {
+      "id": "SRC-4",
+      "quote": "`db.count(...)` and `db.get(...)` are wrong the same way (count says 1 for the `work` query). If I call `db.clear_cache()` between the two searches, the second one is correct, which is why I think it's the query cache."
+    },
+    {
+      "id": "SRC-5",
+      "quote": "I also noticed the two queries compare equal, which seems wrong since they look at different fields:\n\n```python\n>>> Query().home.fragment({'city': 'Paris'}) == Query().work.fragment({'city': 'Paris'})\nTrue\n```"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "Fragment queries using the same fragment on different field paths shall compare unequal.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-5"
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "After a fragment search on one field path, a fragment search using the same fragment on a different field path shall return the documents matching the requested path without requiring cache clearing.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-1",
+        "SRC-2",
+        "SRC-3",
+        "SRC-4"
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "text": "After a fragment search on one field path, count using the same fragment on a different field path shall return the number of documents matching the requested path without requiring cache clearing.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-2",
+        "SRC-4"
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "text": "After a fragment search on one field path, get using the same fragment on a different field path shall return a result determined by the requested path without requiring cache clearing.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-2",
+        "SRC-4"
+      ]
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "requirement": "REQ-1",
+      "given": "q_home = Query().home.fragment({'city': 'Paris'}) and q_work = Query().work.fragment({'city': 'Paris'}).",
+      "when": "Evaluate q_home == q_work.",
+      "then": "The queries compare unequal.",
+      "observable": "The equality expression returns False."
+    },
+    {
+      "id": "AC-2",
+      "requirement": "REQ-2",
+      "given": "A fresh TinyDB(storage=MemoryStorage) contains only {'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}. Calling db.search(Query().home.fragment({'city': 'Paris'})) has returned a one-element list containing that document. No cache clearing or writes follow.",
+      "when": "Call db.search(Query().work.fragment({'city': 'Paris'})).",
+      "then": "The work query finds no matching document.",
+      "observable": "The returned value equals []."
+    },
+    {
+      "id": "AC-3",
+      "requirement": "REQ-2",
+      "given": "A fresh TinyDB(storage=MemoryStorage) contains only {'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}. Calling db.search(Query().work.fragment({'city': 'Paris'})) has returned []. No cache clearing or writes follow.",
+      "when": "Call db.search(Query().home.fragment({'city': 'Paris'})).",
+      "then": "The home query returns the matching document despite the preceding empty result for work.",
+      "observable": "The returned value equals [{'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}]."
+    },
+    {
+      "id": "AC-4",
+      "requirement": "REQ-3",
+      "given": "A fresh TinyDB(storage=MemoryStorage) contains only {'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}. Calling db.search(Query().home.fragment({'city': 'Paris'})) has returned a one-element list containing that document. No cache clearing or writes follow.",
+      "when": "Call db.count(Query().work.fragment({'city': 'Paris'})).",
+      "then": "The work query counts no matching document.",
+      "observable": "The returned value equals 0."
+    },
+    {
+      "id": "AC-5",
+      "requirement": "REQ-4",
+      "given": "A fresh TinyDB(storage=MemoryStorage) contains only {'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}. Calling db.search(Query().home.fragment({'city': 'Paris'})) has returned a one-element list containing that document. No cache clearing or writes follow.",
+      "when": "Call db.get(Query().work.fragment({'city': 'Paris'})).",
+      "then": "The work query finds no matching document.",
+      "observable": "The returned value is None."
+    }
+  ],
+  "open_questions": [],
+  "out_of_scope": [
+    "Changes to query operators other than fragment().",
+    "Changes to cache clearing APIs or fragment matching semantics."
+  ],
+  "injection_findings": [],
+  "spec_md": "# Issue #2: Distinguish fragment queries by field path\n\nStatus: READY \u2014 4 of 4 requirements ready. Mode: batch.\n\nFragment queries with the same fragment on different paths must compare unequal. Search, count, and get must return results for the requested path without clearing the cache after another path has been searched.\n\n## Source excerpts\n\n- SRC-1: \"Title: search() with fragment() returns wrong results when the same fragment is used on another field\"\n- SRC-2: \"db.insert({'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}})\"\n- SRC-3: \"print(db.search(Query().work.fragment({'city': 'Paris'})))\" followed by \"# [{'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}]   <- WRONG, work.city is Rome, should be []\"\n- SRC-4: \"`db.count(...)` and `db.get(...)` are wrong the same way (count says 1 for the `work` query). If I call `db.clear_cache()` between the two searches, the second one is correct, which is why I think it's the query cache.\"\n- SRC-5: \"I also noticed the two queries compare equal, which seems wrong since they look at different fields:\" with `Query().home.fragment({'city': 'Paris'}) == Query().work.fragment({'city': 'Paris'})` returning `True`.\n\n## Requirements\n\n- REQ-1 [STATED; SRC-5]: Fragment queries using the same fragment on different field paths shall compare unequal. Acceptance: AC-1.\n- REQ-2 [STATED; SRC-1\u2013SRC-4]: After a fragment search on one field path, a fragment search using the same fragment on a different field path shall return the documents matching the requested path without requiring cache clearing. Acceptance: AC-2, AC-3.\n- REQ-3 [STATED; SRC-2, SRC-4]: After a fragment search on one field path, count using the same fragment on a different field path shall return the number of documents matching the requested path without requiring cache clearing. Acceptance: AC-4.\n- REQ-4 [STATED; SRC-2, SRC-4]: After a fragment search on one field path, get using the same fragment on a different field path shall return a result determined by the requested path without requiring cache clearing. Acceptance: AC-5.\n\n## Acceptance criteria\n\nFor AC-2 through AC-5, each database is a fresh `TinyDB(storage=MemoryStorage)` containing only `{'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}`. No writes or cache clearing occur between setup searches and the tested action.\n\n- AC-1 \u2192 REQ-1: Given `q_home = Query().home.fragment({'city': 'Paris'})` and `q_work = Query().work.fragment({'city': 'Paris'})`, when evaluating `q_home == q_work`, then assert `False`.\n- AC-2 \u2192 REQ-2: Given `db.search(Query().home.fragment({'city': 'Paris'}))` returned the single document, when calling `db.search(Query().work.fragment({'city': 'Paris'}))`, then assert `[]`.\n- AC-3 \u2192 REQ-2: Given `db.search(Query().work.fragment({'city': 'Paris'}))` returned `[]`, when calling `db.search(Query().home.fragment({'city': 'Paris'}))`, then assert `[{'home': {'city': 'Paris'}, 'work': {'city': 'Rome'}}]`.\n- AC-4 \u2192 REQ-3: Given `db.search(Query().home.fragment({'city': 'Paris'}))` returned the single document, when calling `db.count(Query().work.fragment({'city': 'Paris'}))`, then assert `0`.\n- AC-5 \u2192 REQ-4: Given `db.search(Query().home.fragment({'city': 'Paris'}))` returned the single document, when calling `db.get(Query().work.fragment({'city': 'Paris'}))`, then assert the result is `None`.\n\n## Open questions and assumptions\n\nNone. No maintainer answers were supplied.\n\n## Out of scope\n\n- Changes to query operators other than `fragment()`.\n- Changes to cache clearing APIs or fragment matching semantics.\n\n## Validation\n\nRequirements pass the traceability, consistency, feasibility, testability, singularity, provenance, and scope checks. Repository API documentation establishes `None` as the no-match result for `get`; the inspected implementation already satisfies AC-5, which preserves the reporter's requested behavior. AC-1 through AC-4 capture the reported equality and cache regression. No external evidence was used, no files were written, and no implementation approach is prescribed.\n\n## Injection findings\n\nNone."
+}

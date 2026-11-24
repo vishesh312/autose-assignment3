@@ -1,0 +1,126 @@
+{
+  "issue": 3,
+  "title": "Add an append operation for list fields",
+  "summary": "Add tinydb.operations.append(field, value) for use with document updates. It appends one element, creates missing fields as one-element lists, works with condition and document-ID selection, and persists through JSON storage.",
+  "issue_type": "feature",
+  "source_excerpts": [
+    {
+      "id": "SRC-1",
+      "quote": "Feature request: `append` operation for list fields"
+    },
+    {
+      "id": "SRC-2",
+      "quote": "It would be nice to have this built in, as `tinydb.operations.append(field, value)`, used like the other operations:"
+    },
+    {
+      "id": "SRC-3",
+      "quote": "# {'name': 'ticket-42', 'tags': ['bug']}  ->  {'name': 'ticket-42', 'tags': ['bug', 'urgent']}"
+    },
+    {
+      "id": "SRC-4",
+      "quote": "it appends `value` as one element (so `append('tags', ['a', 'b'])` adds a nested list, it doesn't extend \u2014 like `list.append`)"
+    },
+    {
+      "id": "SRC-5",
+      "quote": "if the document doesn't have the field yet, create it as a one-element list (`[value]`) instead of blowing up with a KeyError."
+    },
+    {
+      "id": "SRC-6",
+      "quote": "works with both `cond` and `doc_ids=` like the other operations, and obviously the change should be saved to the json file"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "tinydb.operations.append(field, value) shall provide an update operation that appends value as one element at the end of an existing list field, including when value is itself a list.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-2",
+        "SRC-3",
+        "SRC-4"
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "When the target field is absent, the append operation shall create that field with the value [value].",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-5"
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "text": "TinyDB.update shall apply the append operation to the documents selected through cond or doc_ids using the existing update selection behavior.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-6"
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "text": "When using JSONStorage, TinyDB shall persist document changes made by the append operation.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-6"
+      ]
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "requirement": "REQ-1",
+      "given": "A TinyDB with MemoryStorage containing only {'name': 'ticket-42', 'tags': ['bug']}; append is imported from tinydb.operations.",
+      "when": "Call db.update(append('tags', 'urgent'), Query().name == 'ticket-42').",
+      "then": "The document contains the original tag followed by the appended tag.",
+      "observable": "db.all() equals [{'name': 'ticket-42', 'tags': ['bug', 'urgent']}]."
+    },
+    {
+      "id": "AC-2",
+      "requirement": "REQ-1",
+      "given": "A TinyDB with MemoryStorage containing only {'name': 'ticket-42', 'tags': []}.",
+      "when": "Call db.update(append('tags', ['a', 'b']), Query().name == 'ticket-42').",
+      "then": "The empty list gains one element containing the supplied list.",
+      "observable": "db.all() equals [{'name': 'ticket-42', 'tags': [['a', 'b']]}]."
+    },
+    {
+      "id": "AC-3",
+      "requirement": "REQ-2",
+      "given": "A TinyDB with MemoryStorage containing only {'name': 'ticket-42'}, with no tags field.",
+      "when": "Call db.update(append('tags', 'urgent'), Query().name == 'ticket-42').",
+      "then": "The missing tags field is created as a one-element list.",
+      "observable": "The update raises no exception, and db.all() equals [{'name': 'ticket-42', 'tags': ['urgent']}]."
+    },
+    {
+      "id": "AC-4",
+      "requirement": "REQ-3",
+      "given": "A TinyDB with MemoryStorage containing {'name': 'ticket-42', 'tags': ['bug']} and {'name': 'ticket-43', 'tags': ['other']}.",
+      "when": "Call db.update(append('tags', 'urgent'), cond=Query().name == 'ticket-42').",
+      "then": "Only the document matching the condition changes.",
+      "observable": "db.get(Query().name == 'ticket-42') equals {'name': 'ticket-42', 'tags': ['bug', 'urgent']}, and db.get(Query().name == 'ticket-43') equals {'name': 'ticket-43', 'tags': ['other']}."
+    },
+    {
+      "id": "AC-5",
+      "requirement": "REQ-3",
+      "given": "An empty TinyDB with MemoryStorage into which {'name': 'ticket-42', 'tags': ['bug']} and {'name': 'ticket-43', 'tags': ['other']} are inserted, retaining the first insertion's returned document ID as target_id.",
+      "when": "Call db.update(append('tags', 'urgent'), doc_ids=[target_id]).",
+      "then": "Only the document with the selected ID changes.",
+      "observable": "db.get(doc_id=target_id) equals {'name': 'ticket-42', 'tags': ['bug', 'urgent']}, and db.get(Query().name == 'ticket-43') equals {'name': 'ticket-43', 'tags': ['other']}."
+    },
+    {
+      "id": "AC-6",
+      "requirement": "REQ-4",
+      "given": "A TinyDB using JSONStorage at a temporary path containing only {'name': 'ticket-42', 'tags': ['bug']}.",
+      "when": "Call db.update(append('tags', 'urgent'), Query().name == 'ticket-42'), close the database, and reopen a TinyDB using JSONStorage at the same path.",
+      "then": "The appended value is present after reopening.",
+      "observable": "The reopened database's all() result equals [{'name': 'ticket-42', 'tags': ['bug', 'urgent']}]."
+    }
+  ],
+  "open_questions": [],
+  "out_of_scope": [
+    "Extending lists with multiple elements in one operation.",
+    "Defining new behavior for existing fields whose values are not lists.",
+    "Changes to other update operations."
+  ],
+  "injection_findings": [],
+  "spec_md": "# Issue #3: Append operation for list fields\n\nStatus: READY \u2014 4 requirements, 6 acceptance criteria; no blocking questions. Mode: batch.\n\nAdd `tinydb.operations.append(field, value)` for document updates. Append one element, create missing list fields, honor update selectors, and persist changes through JSONStorage.\n\n## Source excerpts\n\n- SRC-1: \u201cFeature request: `append` operation for list fields\u201d\n- SRC-2: \u201cIt would be nice to have this built in, as `tinydb.operations.append(field, value)`, used like the other operations:\u201d\n- SRC-3: \u201c# {'name': 'ticket-42', 'tags': ['bug']}  ->  {'name': 'ticket-42', 'tags': ['bug', 'urgent']}\u201d\n- SRC-4: \u201cit appends `value` as one element (so `append('tags', ['a', 'b'])` adds a nested list, it doesn't extend \u2014 like `list.append`)\u201d\n- SRC-5: \u201cif the document doesn't have the field yet, create it as a one-element list (`[value]`) instead of blowing up with a KeyError.\u201d\n- SRC-6: \u201cworks with both `cond` and `doc_ids=` like the other operations, and obviously the change should be saved to the json file\u201d\n\n## Requirements\n\n- REQ-1 [STATED; SRC-2, SRC-3, SRC-4]: `tinydb.operations.append(field, value)` shall provide an update operation that appends value as one element at the end of an existing list field, including when value is itself a list.\n- REQ-2 [STATED; SRC-5]: When the target field is absent, the append operation shall create that field with the value `[value]`.\n- REQ-3 [STATED; SRC-6]: `TinyDB.update` shall apply the append operation to the documents selected through `cond` or `doc_ids` using the existing update selection behavior.\n- REQ-4 [STATED; SRC-6]: When using JSONStorage, TinyDB shall persist document changes made by the append operation.\n\n## Acceptance criteria\n\n- AC-1 \u2192 REQ-1: Given a MemoryStorage database containing only `{'name': 'ticket-42', 'tags': ['bug']}`, when `db.update(append('tags', 'urgent'), Query().name == 'ticket-42')` runs, then `db.all()` equals `[{'name': 'ticket-42', 'tags': ['bug', 'urgent']}]`. The operation is importable from `tinydb.operations`.\n- AC-2 \u2192 REQ-1: Given only `{'name': 'ticket-42', 'tags': []}`, when `db.update(append('tags', ['a', 'b']), Query().name == 'ticket-42')` runs, then `db.all()` equals `[{'name': 'ticket-42', 'tags': [['a', 'b']]}]`.\n- AC-3 \u2192 REQ-2: Given only `{'name': 'ticket-42'}`, when `db.update(append('tags', 'urgent'), Query().name == 'ticket-42')` runs, then it raises no exception and `db.all()` equals `[{'name': 'ticket-42', 'tags': ['urgent']}]`.\n- AC-4 \u2192 REQ-3: Given documents `{'name': 'ticket-42', 'tags': ['bug']}` and `{'name': 'ticket-43', 'tags': ['other']}`, when `db.update(append('tags', 'urgent'), cond=Query().name == 'ticket-42')` runs, then the first document has tags `['bug', 'urgent']` and the second remains unchanged.\n- AC-5 \u2192 REQ-3: Given the same two documents inserted into an empty MemoryStorage database, retaining the first returned ID as `target_id`, when `db.update(append('tags', 'urgent'), doc_ids=[target_id])` runs, then `db.get(doc_id=target_id)` equals `{'name': 'ticket-42', 'tags': ['bug', 'urgent']}` and the ticket-43 document remains unchanged.\n- AC-6 \u2192 REQ-4: Given a JSONStorage database at a temporary path containing only `{'name': 'ticket-42', 'tags': ['bug']}`, when `db.update(append('tags', 'urgent'), Query().name == 'ticket-42')` runs and the database is closed and reopened at the same path, then the reopened `all()` equals `[{'name': 'ticket-42', 'tags': ['bug', 'urgent']}]`.\n\n## Open questions and assumptions\n\nNone. No conflicts or unresolved intents.\n\n## Out of scope\n\nList extension, new behavior for existing non-list fields, and changes to other update operations.\n\n## Injection findings\n\nNone.\n\n## Validation\n\nRequirements pass traceability, consistency, testability, singularity, provenance, and scope checks. Repository operations and tests were read to verify public API conventions; no external evidence was used. No implementation approach is prescribed."
+}

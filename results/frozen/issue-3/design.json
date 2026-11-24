@@ -1,0 +1,53 @@
+{
+  "approach": "Add a single append operation factory in tinydb/operations.py, following the existing callable-transform pattern. Table.update already handles condition and document-ID selection, full-database persistence, and cache invalidation, so no changes to those layers are needed.",
+  "changes": [
+    {
+      "path": "tinydb/operations.py",
+      "symbol": "append",
+      "kind": "new",
+      "new_file": false,
+      "description": "Add append(field: str, value: Any) -> Callable[[MutableMapping], None]. Return a nested transform callable that mutates its document and implicitly returns None. If field is absent, assign a fresh [value] list on each invocation; otherwise call doc[field].append(value). This preserves ordering and appends list values as a single nested element. Follow neighboring helpers' formatting and include a short docstring explaining existing and missing fields and single-element semantics. Reuse existing typing imports. Do not add validation, copying, exception translation, or special handling for existing non-list fields. The operation is directly importable from tinydb.operations and uses the existing Table.update path for selection and persistence.",
+      "acs": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4",
+        "AC-5",
+        "AC-6"
+      ]
+    }
+  ],
+  "public_api": [
+    {
+      "signature": "tinydb.operations.append(field: str, value: Any) -> Callable[[MutableMapping], None]",
+      "behaviour": "Returns a document update callable. Calling it on a mutable document appends value as one element at the end of an existing list field, preserving preceding elements; a list value becomes one nested list rather than being extended. If field is absent, creates [value] without raising KeyError. Each missing field receives its own outer list. The callable mutates the document in place and returns None. Existing non-list fields are outside the supported contract; no custom validation or exception message is introduced."
+    },
+    {
+      "signature": "Table.update(self, fields: Union[Mapping, Callable[[MutableMapping], None]], cond: Optional[QueryLike] = None, doc_ids: Optional[Iterable[int]] = None) -> list[int]",
+      "behaviour": "Existing signature and selection semantics, also exposed as db.update through TinyDB's default-table forwarding. Passing append(field, value) updates only documents matching a positional or keyword cond, or only the documents selected by doc_ids; unselected documents retain their values. Returns the updated document IDs. With JSONStorage, appended values remain present after closing and reopening the database at the same path."
+    }
+  ],
+  "test_hooks": [
+    "Import append from tinydb.operations, TinyDB and Query from tinydb, and MemoryStorage and JSONStorage from tinydb.storages.",
+    "For AC-1 through AC-5, construct a fresh TinyDB(storage=MemoryStorage) and insert exactly the documents specified by each criterion. The existing db fixture is parametrized over memory and JSON and prepopulates unrelated documents, so it requires clearing before these scenarios.",
+    "Use Query().name == 'ticket-42' as the positional condition for AC-1 through AC-3 and as cond= for AC-4. Verify complete document contents, including the nested list in AC-2 and absence of exceptions in AC-3.",
+    "For AC-5, retain the first db.insert return value as target_id and pass doc_ids=[target_id]. Verify both the selected document through db.get(doc_id=target_id) and the unchanged ticket-43 document.",
+    "For AC-6, use TinyDB(str(tmp_path / 'append.json'), storage=JSONStorage), insert the specified document, update, close, then open a fresh TinyDB at the same path with JSONStorage and compare all(). Close both instances appropriately.",
+    "Keep generated tests in the Tester's owned test file. Run the six acceptance scenarios and the existing operations tests as regression coverage."
+  ],
+  "risks": [
+    "Existing non-list fields are explicitly out of scope; the design lets the underlying append attribute lookup or call determine their behavior.",
+    "Mutable appended values retain normal list.append reference semantics in memory; no defensive copying is introduced.",
+    "The plan relies on the verified existing Table.update and _update_table integration for selectors, persistence, ID conversion, and cache invalidation; JSON close/reopen coverage validates that integration."
+  ],
+  "architecture_refs": [
+    "ARCHITECTURE.md \u00a71: Operations are plain callables supplied by users to Table.update; the new helper follows that boundary.",
+    "ARCHITECTURE.md \u00a73 Constraint 1: operations.py retains only standard-library imports; package import direction and __init__.py ordering remain intact.",
+    "ARCHITECTURE.md ADR-1 and \u00a73 Constraint 2: Table.update routes the transformation through _update_table, preserving whole-database Storage.read()/write() and None-as-empty handling.",
+    "ARCHITECTURE.md ADR-3 and \u00a73 Constraint 3: _update_table clears the query cache after writing.",
+    "ARCHITECTURE.md \u00a73 Constraint 4: No query construction or hashing changes are needed; existing stable-hash and non-cacheable fallback behavior remains in place.",
+    "ARCHITECTURE.md \u00a73 Constraint 5: Existing _update_table ID conversions and _get_next_id monotonic allocation remain in place.",
+    "ARCHITECTURE.md ADR-2: The helper uses the existing storage path, preserving callable middleware composition."
+  ],
+  "design_md": "## Approach\n\nAdd one operation factory using the existing operations.py pattern. Return a document transformer that assigns a fresh `[value]` when the field is missing and otherwise calls the field's `.append(value)`. The transformer returns None. Include a short docstring describing single-element append and missing-field creation. Existing imports already provide the required types.\n\nVerified Table.update invokes callable operations on selected documents and routes all selector branches through _update_table. That method reads and writes the whole database, converts document IDs, and clears the query cache. JSONStorage already serializes and flushes the updated database. No changes outside operations.py are required.\n\n## Changes\n\n| Path | Symbol | Kind | ACs |\n|---|---|---|---|\n| tinydb/operations.py | append | new | AC-1, AC-2, AC-3, AC-4, AC-5, AC-6 |\n\n## Public API and test hooks\n\n`tinydb.operations.append(field: str, value: Any) -> Callable[[MutableMapping], None]` returns an in-place document transformer. Existing list fields gain one final element, including a nested list when value is a list. Missing fields become `[value]`, with a fresh outer list per document. No custom validation or exception translation is added for existing non-list fields.\n\n`Table.update(self, fields: Union[Mapping, Callable[[MutableMapping], None]], cond: Optional[QueryLike] = None, doc_ids: Optional[Iterable[int]] = None) -> list[int]`, available through `TinyDB.update`, retains its existing signature and behavior. The append callable participates in positional conditions, keyword conditions, and document-ID selection and persists through JSONStorage.\n\nUse fresh `TinyDB(storage=MemoryStorage)` instances for AC-1\u2013AC-5. Import Query and TinyDB from tinydb and append from tinydb.operations. The existing db fixture contains unrelated documents and must be cleared if reused. Retain an insertion's returned ID for AC-5. For AC-6, use an explicit JSONStorage at a temporary path, close after updating, reopen a fresh database at that path, and compare all(). The Tester owns all generated tests; run these scenarios and existing operations tests.\n\n## Acceptance traceability\n\n- AC-1 \u2192 append: direct import and ordered append to an existing list.\n- AC-2 \u2192 append: list values are appended as a single nested element.\n- AC-3 \u2192 append: absent fields receive a fresh one-element list.\n- AC-4 \u2192 append through existing Table.update condition selection.\n- AC-5 \u2192 append through existing Table.update document-ID selection.\n- AC-6 \u2192 append through existing _update_table and JSONStorage persistence, verified after reopening.\n\n## Architecture constraints considered\n\n- \u00a71 and Constraint 1: retain the standalone callable operation boundary, standard-library-only imports, and package initialization order.\n- ADR-1 and Constraint 2: all persistence remains through the existing whole-database storage path, including None-as-empty handling.\n- ADR-3 and Constraint 3: existing _update_table invalidates the query cache after writing.\n- Constraint 4: query hashes and their non-cacheable fallback remain unchanged.\n- Constraint 5: existing ID conversion and monotonic allocation remain unchanged.\n- ADR-2: existing middleware composition continues to wrap storage transparently.\n\n## Risks\n\nExisting non-list fields are outside scope and receive no special handling. Mutable appended values use ordinary list.append reference semantics. Selection, cache invalidation, and persistence rely on the existing update pipeline; the acceptance scenarios exercise selector and JSON persistence integration."
+}

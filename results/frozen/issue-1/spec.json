@@ -1,0 +1,121 @@
+{
+  "issue": 1,
+  "title": "Accept string document IDs in update() and remove()",
+  "summary": "Make update() and remove() recognize string document IDs such as '1' as referring to document 1, consistent with get(). Return the affected integer IDs and continue skipping nonexistent IDs, for default and named tables using MemoryStorage or JSONStorage.",
+  "issue_type": "bug",
+  "source_excerpts": [
+    {
+      "id": "SRC-1",
+      "quote": "update()/remove() with doc_ids=['1'] silently do nothing, but get(doc_id='1') works"
+    },
+    {
+      "id": "SRC-2",
+      "quote": "print(db.update({'x': 2}, doc_ids=['1']))\n# []                <- expected [1]"
+    },
+    {
+      "id": "SRC-3",
+      "quote": "print(db.remove(doc_ids=['1']))\n# []                <- expected [1]"
+    },
+    {
+      "id": "SRC-4",
+      "quote": "Same thing happens with a JSON file storage and with named tables (`db.table('foo')`)."
+    },
+    {
+      "id": "SRC-5",
+      "quote": "`update(..., doc_ids=[...])` and `remove(doc_ids=[...])` should accept the same ids that `get(doc_id=...)` / `get(doc_ids=[...])` accept, i.e. `'1'` should hit document 1 and the return value should be the list of ids that were actually updated/removed (`[1]`), same as with ints."
+    },
+    {
+      "id": "SRC-6",
+      "quote": "Ids that don't exist should still just be skipped like they are now with ints."
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "For default and named tables using MemoryStorage or JSONStorage, update(..., doc_ids=...) shall treat string IDs identifying existing documents as their corresponding integer IDs, returning the integer IDs of the documents updated.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-1",
+        "SRC-2",
+        "SRC-4",
+        "SRC-5"
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "For default and named tables using MemoryStorage or JSONStorage, remove(doc_ids=...) shall treat string IDs identifying existing documents as their corresponding integer IDs, returning the integer IDs of the documents removed.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-1",
+        "SRC-3",
+        "SRC-4",
+        "SRC-5"
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "text": "When update() or remove() receives nonexistent IDs in doc_ids, the operation shall skip those IDs without including them in its returned list.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-6"
+      ]
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "requirement": "REQ-1",
+      "given": "For each of four independent configurations\u2014MemoryStorage with the default table, MemoryStorage with table('foo'), JSONStorage at a fresh temporary file with the default table, and JSONStorage at a fresh temporary file with table('foo')\u2014the selected table contains only {'x': 1}, inserted with document ID 1.",
+      "when": "Call update({'x': 2}, doc_ids=['1']) on the selected table.",
+      "then": "Document 1 is updated and its integer ID is returned.",
+      "observable": "In each configuration, the return value is [1], its element has type int, get(doc_id=1) equals {'x': 2}, and len(selected_table) equals 1."
+    },
+    {
+      "id": "AC-2",
+      "requirement": "REQ-2",
+      "given": "For each of four independent configurations\u2014MemoryStorage with the default table, MemoryStorage with table('foo'), JSONStorage at a fresh temporary file with the default table, and JSONStorage at a fresh temporary file with table('foo')\u2014the selected table contains only {'x': 1}, inserted with document ID 1.",
+      "when": "Call remove(doc_ids=['1']) on the selected table.",
+      "then": "Document 1 is removed and its integer ID is returned.",
+      "observable": "In each configuration, the return value is [1], its element has type int, selected_table.all() equals [], and len(selected_table) equals 0."
+    },
+    {
+      "id": "AC-3",
+      "requirement": "REQ-1",
+      "given": "A TinyDB using MemoryStorage whose default table contains documents 1: {'x': 1}, 2: {'x': 2}, and 3: {'x': 3}, inserted in that order.",
+      "when": "Call db.update({'x': 9}, doc_ids=['1', 2, '99', 100]).",
+      "then": "Existing string and integer targets are updated, nonexistent targets are skipped, and the untargeted document remains unchanged.",
+      "observable": "The returned list has length 2, its set equals {1, 2}, and each element has type int. get(doc_id=1) and get(doc_id=2) each equal {'x': 9}; get(doc_id=3) equals {'x': 3}; len(db) equals 3."
+    },
+    {
+      "id": "AC-4",
+      "requirement": "REQ-2",
+      "given": "A TinyDB using MemoryStorage whose default table contains documents 1: {'x': 1}, 2: {'x': 2}, and 3: {'x': 3}, inserted in that order.",
+      "when": "Call db.remove(doc_ids=['1', 2, '99', 100]).",
+      "then": "Existing string and integer targets are removed, nonexistent targets are skipped, and the untargeted document remains unchanged.",
+      "observable": "The returned list has length 2, its set equals {1, 2}, and each element has type int. get(doc_id=1) and get(doc_id=2) each return None; get(doc_id=3) equals {'x': 3}; len(db) equals 1."
+    },
+    {
+      "id": "AC-5",
+      "requirement": "REQ-3",
+      "given": "A TinyDB using MemoryStorage whose default table contains only document 1: {'x': 1}.",
+      "when": "Call db.update({'x': 9}, doc_ids=['99', 100]).",
+      "then": "No documents are updated and the returned list is empty.",
+      "observable": "The call returns [] without raising an exception; db.all() equals [{'x': 1}], and get(doc_id=1) equals {'x': 1}."
+    },
+    {
+      "id": "AC-6",
+      "requirement": "REQ-3",
+      "given": "A TinyDB using MemoryStorage whose default table contains only document 1: {'x': 1}.",
+      "when": "Call db.remove(doc_ids=['99', 100]).",
+      "then": "No documents are removed and the returned list is empty.",
+      "observable": "The call returns [] without raising an exception; db.all() equals [{'x': 1}], and get(doc_id=1) equals {'x': 1}."
+    }
+  ],
+  "open_questions": [],
+  "out_of_scope": [
+    "Changing the existing behavior of get().",
+    "Defining new behavior for malformed IDs or duplicate references to the same document."
+  ],
+  "injection_findings": [],
+  "spec_md": "# Issue #1: String IDs in update() and remove()\n\nStatus: READY \u2014 3 of 3 requirements ready. Mode: batch.\n\n## Summary\n\nMake update() and remove() recognize string IDs such as '1' as document 1, consistent with get(). Return affected integer IDs and skip nonexistent IDs for default and named tables using MemoryStorage or JSONStorage.\n\n## Source excerpts\n\n- SRC-1: \"update()/remove() with doc_ids=['1'] silently do nothing, but get(doc_id='1') works\"\n- SRC-2: \"print(db.update({'x': 2}, doc_ids=['1']))\\n# []                <- expected [1]\"\n- SRC-3: \"print(db.remove(doc_ids=['1']))\\n# []                <- expected [1]\"\n- SRC-4: \"Same thing happens with a JSON file storage and with named tables (`db.table('foo')`).\"\n- SRC-5: \"`update(..., doc_ids=[...])` and `remove(doc_ids=[...])` should accept the same ids that `get(doc_id=...)` / `get(doc_ids=[...])` accept, i.e. `'1'` should hit document 1 and the return value should be the list of ids that were actually updated/removed (`[1]`), same as with ints.\"\n- SRC-6: \"Ids that don't exist should still just be skipped like they are now with ints.\"\n\n## Requirements\n\n- REQ-1 [STATED; SRC-1, SRC-2, SRC-4, SRC-5]: For default and named tables using MemoryStorage or JSONStorage, update(..., doc_ids=...) shall treat string IDs identifying existing documents as their corresponding integer IDs, returning the integer IDs of the documents updated. Acceptance: AC-1, AC-3.\n- REQ-2 [STATED; SRC-1, SRC-3, SRC-4, SRC-5]: For default and named tables using MemoryStorage or JSONStorage, remove(doc_ids=...) shall treat string IDs identifying existing documents as their corresponding integer IDs, returning the integer IDs of the documents removed. Acceptance: AC-2, AC-4.\n- REQ-3 [STATED; SRC-6]: When update() or remove() receives nonexistent IDs in doc_ids, the operation shall skip those IDs without including them in its returned list. Acceptance: AC-5, AC-6; mixed targets also covered by AC-3 and AC-4.\n\n## Acceptance criteria\n\n- AC-1 \u2192 REQ-1: Given only document 1 containing {'x': 1}, independently in each combination of MemoryStorage/JSONStorage and default/table('foo'), when update({'x': 2}, doc_ids=['1']) is called, then it returns [1] with an int element, get(doc_id=1) equals {'x': 2}, and the selected table length is 1. JSONStorage uses a fresh temporary file.\n- AC-2 \u2192 REQ-2: Given the same four independent configurations, each containing only document 1 with {'x': 1}, when remove(doc_ids=['1']) is called, then it returns [1] with an int element, the selected table's all() returns [], and its length is 0.\n- AC-3 \u2192 REQ-1: Given MemoryStorage documents 1: {'x': 1}, 2: {'x': 2}, 3: {'x': 3}, when update({'x': 9}, doc_ids=['1', 2, '99', 100]) is called, then the returned list has length 2, set {1, 2}, and int elements; documents 1 and 2 each equal {'x': 9}, document 3 equals {'x': 3}, and the table length is 3.\n- AC-4 \u2192 REQ-2: Given the same three MemoryStorage documents, when remove(doc_ids=['1', 2, '99', 100]) is called, then the returned list has length 2, set {1, 2}, and int elements; get(doc_id=1) and get(doc_id=2) return None, document 3 equals {'x': 3}, and the table length is 1.\n- AC-5 \u2192 REQ-3: Given MemoryStorage containing only document 1 with {'x': 1}, when update({'x': 9}, doc_ids=['99', 100]) is called, then it returns [] without exception, all() equals [{'x': 1}], and get(doc_id=1) equals {'x': 1}.\n- AC-6 \u2192 REQ-3: Given MemoryStorage containing only document 1 with {'x': 1}, when remove(doc_ids=['99', 100]) is called, then it returns [] without exception, all() equals [{'x': 1}], and get(doc_id=1) equals {'x': 1}.\n\n## Open questions and assumptions\n\nNone. No maintainer answers were supplied.\n\n## Out of scope\n\n- Changing get() behavior.\n- Defining new behavior for malformed IDs or duplicate references to the same document.\n\n## Injection findings\n\nNone.\n\n## Validation\n\nRequirements pass the applicable completeness, consistency, traceability, feasibility, testability, clarity, provenance, and scope checks. Repository inspection confirms the public APIs and existing missing-ID convention. No implementation approach is prescribed. External evidence and artifact writing were skipped as required by the issue adapter."
+}
