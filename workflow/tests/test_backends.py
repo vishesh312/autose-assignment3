@@ -121,3 +121,17 @@ def test_required_nullable_field_keeps_its_null() -> None:
     assert backends._drop_nulls(out, schema) == out
     jsonschema.validate(backends._drop_nulls(out, schema), schema)
     assert backends._drop_nulls({"a": 1, "note": None}, SCHEMA) == {"a": 1}
+
+
+def test_codex_timeout_charges_the_role_cap(tmp_path: Path) -> None:
+    """A killed codex run never emits turn.completed (its only usage report): it must not be charged $0."""
+    stub = tmp_path / "codex"
+    stub.write_text("#!/usr/bin/env python3\nimport time\ntime.sleep(30)\n")
+    stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
+    from dataclasses import replace
+    role = replace(config.role("developer"), timeout_s=1)
+    call = agent.AgentCall(role=role, system_prompt="S", task="T", schema=SCHEMA, cwd=tmp_path,
+                           log_dir=tmp_path / "logs", label="t")
+    res = agent.run_agent(backends.CodexRunner(str(stub)), call)
+    assert not res.ok and res.subtype == "error_timeout"
+    assert res.cost_usd == pytest.approx(role.budget_usd)
