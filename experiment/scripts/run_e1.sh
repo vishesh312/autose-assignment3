@@ -17,7 +17,7 @@ for arm in $ARMS; do
   esac
   for sp in "$HERE"/experiment/seeded_prs/SP*/; do
     id=$(basename "$sp")
-    ( env "${envs[@]}" "${AUTOSE_WF_PY:-python3}" -m autose --home "$OUT/$arm" --python "$PY" \
+    ( env ${envs[@]+"${envs[@]}"} "${AUTOSE_WF_PY:-python3}" -m autose --home "$OUT/$arm" --python "$PY" \
         review-local --pr-dir "$sp" --repo "$REPO" --variant "$variant" > "$OUT/$arm-$id.json" 2> "$OUT/$arm-$id.log" \
       || echo "FAILED $arm $id" >> "$OUT/failures.txt" ) &
   done

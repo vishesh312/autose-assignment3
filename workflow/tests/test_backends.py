@@ -31,7 +31,7 @@ def test_parse_codex_events_success_usage_and_nulls_dropped() -> None:
         {"type": "turn.completed", "usage": {"input_tokens": 1000, "cached_input_tokens": 400,
                                              "output_tokens": 50, "reasoning_output_tokens": 10}},
     ])
-    env = backends.parse_codex_events(events, "", "gpt-6.1-sol")
+    env = backends.parse_codex_events(events, "", "gpt-6.1-sol", SCHEMA)
     res = agent.parse_envelope(env, SCHEMA, model="gpt-6.1-sol")
     assert res.ok and res.output == {"a": 3}
     assert (res.tokens_in, res.cache_read, res.tokens_out, res.num_turns) == (600, 400, 60, 1)
@@ -111,3 +111,13 @@ def test_routing_runner_dispatches_per_role(tmp_path: Path, monkeypatch: pytest.
                                log_dir=tmp_path, label=name)
         assert agent.run_agent(r, call).ok
     assert seen == ["codex", "agy"]
+
+
+def test_required_nullable_field_keeps_its_null() -> None:
+    """Regression (issue #5 live run): a required-but-nullable key must survive the null strip."""
+    schema = json.loads((config.SCHEMAS_DIR / "spec.schema.json").read_text())["properties"]["open_questions"]
+    out = [{"id": "Q-1", "question": "q", "why_it_matters": "w", "blocking": True, "options": [],
+            "default_if_unanswered": None}]
+    assert backends._drop_nulls(out, schema) == out
+    jsonschema.validate(backends._drop_nulls(out, schema), schema)
+    assert backends._drop_nulls({"a": 1, "note": None}, SCHEMA) == {"a": 1}
