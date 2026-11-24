@@ -1,0 +1,36 @@
+diff --git a/tinydb/database.py b/tinydb/database.py
+index 0cd2b7e..2511e4e 100644
+--- a/tinydb/database.py
++++ b/tinydb/database.py
+@@ -257,6 +257,10 @@ class TinyDB(TableBase):
+     # Here we forward magic methods to the default table instance. These are
+     # not handled by __getattr__ so we need to forward them manually here
+ 
++    def __contains__(self, item: object) -> bool:
++        """Check membership in the default table."""
++        return item in self.table(self.default_table_name)
++
+     def __len__(self):
+         """
+         Get the total number of documents in the default table.
+diff --git a/tinydb/table.py b/tinydb/table.py
+index 76470aa..66c02c3 100644
+--- a/tinydb/table.py
++++ b/tinydb/table.py
+@@ -722,6 +722,16 @@ class Table:
+ 
+         self._query_cache.clear()
+ 
++    def __contains__(self, item: object) -> bool:
++        """Check for a document ID or a matching query."""
++        if isinstance(item, int):
++            return self.contains(doc_id=item)
++        if callable(item):
++            return self.contains(item)
++        raise TypeError(
++            'Membership requires an integer document ID or a callable query'
++        )
++
+     def __len__(self):
+         """
+         Count the total number of documents in this table.

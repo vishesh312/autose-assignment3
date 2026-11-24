@@ -1,0 +1,135 @@
+{
+  "issue": 4,
+  "title": "Add a `limit` argument to search()",
+  "summary": "Add an optional limit to TinyDB searches so callers can request the first matching documents in the existing search order. Searches without a limit must retain their existing results, including when limited and unlimited searches share the query cache.",
+  "issue_type": "feature",
+  "source_excerpts": [
+    {
+      "id": "SRC-1",
+      "quote": "Add a `limit` argument to search()"
+    },
+    {
+      "id": "SRC-2",
+      "quote": "`limit=N` returns at most N documents, the first N matches in the normal order (document id / insertion order), same order `search` already uses"
+    },
+    {
+      "id": "SRC-3",
+      "quote": "`limit=None` (the default) means no limit, so existing code doesn't change"
+    },
+    {
+      "id": "SRC-4",
+      "quote": "if there are fewer matches than `limit`, just return all of them"
+    },
+    {
+      "id": "SRC-5",
+      "quote": "should work on `db.table('x').search(...)` too, not just the default table"
+    },
+    {
+      "id": "SRC-6",
+      "quote": "please make sure it plays nice with the query cache — I don't want `search(q, limit=1)` followed by `search(q)` to suddenly give me only 1 result (or the other way round)"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "For a non-negative integer limit N, search shall return the first N matching documents in its existing order, or fewer when fewer documents match.",
+      "provenance": "STATED",
+      "sources": ["SRC-1", "SRC-2", "SRC-4"]
+    },
+    {
+      "id": "REQ-2",
+      "text": "Search shall return the existing unlimited result when limit is omitted or None.",
+      "provenance": "STATED",
+      "sources": ["SRC-3"]
+    },
+    {
+      "id": "REQ-3",
+      "text": "A named table's search shall accept the limit argument with the same result semantics as the default table's search.",
+      "provenance": "STATED",
+      "sources": ["SRC-5"]
+    },
+    {
+      "id": "REQ-4",
+      "text": "A search result shall respect its own limit regardless of prior searches for the same query using a different limit.",
+      "provenance": "STATED",
+      "sources": ["SRC-6"]
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "requirement": "REQ-1",
+      "given": "A TinyDB using MemoryStorage has default-table documents inserted in order: {'status': 'open', 'n': 1}, {'status': 'closed', 'n': 2}, {'status': 'open', 'n': 3}, {'status': 'open', 'n': 4}. Let q be Query().status == 'open'.",
+      "when": "Call db.search(q, limit=2).",
+      "then": "The first two matching documents are returned in insertion order.",
+      "observable": "The returned list equals [{'status': 'open', 'n': 1}, {'status': 'open', 'n': 3}]."
+    },
+    {
+      "id": "AC-2",
+      "requirement": "REQ-1",
+      "given": "A TinyDB using MemoryStorage has default-table documents {'status': 'open', 'n': 1} and {'status': 'open', 'n': 2}, inserted in that order. Let q be Query().status == 'open'.",
+      "when": "Call db.search(q, limit=5).",
+      "then": "Both matching documents are returned in insertion order.",
+      "observable": "The returned list equals [{'status': 'open', 'n': 1}, {'status': 'open', 'n': 2}]."
+    },
+    {
+      "id": "AC-3",
+      "requirement": "REQ-1",
+      "given": "A TinyDB using MemoryStorage has the default-table document {'status': 'open'}. Let q be Query().status == 'open'.",
+      "when": "Call db.search(q, limit=0).",
+      "then": "No documents are returned.",
+      "observable": "The returned list equals []."
+    },
+    {
+      "id": "AC-4",
+      "requirement": "REQ-2",
+      "given": "A TinyDB using MemoryStorage has default-table documents {'status': 'open', 'n': 1} and {'status': 'open', 'n': 2}, inserted in that order. Let q be Query().status == 'open'.",
+      "when": "Call db.search(q, limit=None).",
+      "then": "Both matching documents are returned in insertion order.",
+      "observable": "The returned list equals [{'status': 'open', 'n': 1}, {'status': 'open', 'n': 2}]."
+    },
+    {
+      "id": "AC-5",
+      "requirement": "REQ-3",
+      "given": "A TinyDB using MemoryStorage has named table 'x' containing {'status': 'open', 'n': 1} and {'status': 'open', 'n': 2}, inserted in that order. Let q be Query().status == 'open'.",
+      "when": "Call db.table('x').search(q, limit=1).",
+      "then": "The first matching document from table 'x' is returned.",
+      "observable": "The returned list equals [{'status': 'open', 'n': 1}]."
+    },
+    {
+      "id": "AC-6",
+      "requirement": "REQ-4",
+      "given": "A TinyDB using MemoryStorage has default-table documents {'status': 'open', 'n': 1} and {'status': 'open', 'n': 2}, inserted in that order. Let q be Query().status == 'open'; db.search(q, limit=1) has already been called.",
+      "when": "Call db.search(q).",
+      "then": "Both matching documents are returned in insertion order.",
+      "observable": "The returned list equals [{'status': 'open', 'n': 1}, {'status': 'open', 'n': 2}]."
+    },
+    {
+      "id": "AC-7",
+      "requirement": "REQ-4",
+      "given": "A TinyDB using MemoryStorage has default-table documents {'status': 'open', 'n': 1} and {'status': 'open', 'n': 2}, inserted in that order. Let q be Query().status == 'open'; db.search(q) has already been called.",
+      "when": "Call db.search(q, limit=1).",
+      "then": "Only the first matching document is returned.",
+      "observable": "The returned list equals [{'status': 'open', 'n': 1}]."
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "Q-1",
+      "question": "What should search do when `limit` is a negative integer, such as `limit=-1`?",
+      "why_it_matters": "INTENT: the issue specifies 'at most N documents' but does not define the domain of N. Plausible choices produce different observable results.",
+      "blocking": true,
+      "options": [
+        "Raise ValueError.",
+        "Return an empty list.",
+        "Apply Python negative-slice semantics to the matching documents."
+      ],
+      "default_if_unanswered": null
+    }
+  ],
+  "out_of_scope": [
+    "Adding sorting or selecting the oldest documents by a field; the requested limit uses the existing search order."
+  ],
+  "injection_findings": [],
+  "spec_md": "# Issue 4: Add a `limit` argument to search()\n\n**Status: NOT READY — Q-1 is blocking.**\n\nAdd an optional limit to searches, preserving existing match order and unlimited behavior. Limited and unlimited searches for the same query must each return the result requested, including when the query cache is in use.\n\n## Sources\n\n- SRC-1: “Add a `limit` argument to search()”\n- SRC-2: “`limit=N` returns at most N documents, the first N matches in the normal order (document id / insertion order), same order `search` already uses”\n- SRC-3: “`limit=None` (the default) means no limit, so existing code doesn't change”\n- SRC-4: “if there are fewer matches than `limit`, just return all of them”\n- SRC-5: “should work on `db.table('x').search(...)` too, not just the default table”\n- SRC-6: “please make sure it plays nice with the query cache — I don't want `search(q, limit=1)` followed by `search(q)` to suddenly give me only 1 result (or the other way round)”\n\n## Requirements\n\n- REQ-1 (STATED; SRC-1, SRC-2, SRC-4): For a non-negative integer limit N, search shall return the first N matching documents in its existing order, or fewer when fewer documents match. AC-1–AC-3.\n- REQ-2 (STATED; SRC-3): Search shall return the existing unlimited result when limit is omitted or None. AC-4, AC-6.\n- REQ-3 (STATED; SRC-5): A named table's search shall accept the limit argument with the same result semantics as the default table's search. AC-5.\n- REQ-4 (STATED; SRC-6): A search result shall respect its own limit regardless of prior searches for the same query using a different limit. AC-6–AC-7.\n\n## Acceptance criteria\n\n- AC-1 (REQ-1): Given a MemoryStorage default table containing, in order, `{'status': 'open', 'n': 1}`, `{'status': 'closed', 'n': 2}`, `{'status': 'open', 'n': 3}`, and `{'status': 'open', 'n': 4}`, and `q = Query().status == 'open'`, when `db.search(q, limit=2)` is called, then it returns `[{'status': 'open', 'n': 1}, {'status': 'open', 'n': 3}]`.\n- AC-2 (REQ-1): Given a MemoryStorage default table containing `{'status': 'open', 'n': 1}` and `{'status': 'open', 'n': 2}` in that order, and `q = Query().status == 'open'`, when `db.search(q, limit=5)` is called, then it returns both documents in that order.\n- AC-3 (REQ-1): Given a MemoryStorage default table containing `{'status': 'open'}` and `q = Query().status == 'open'`, when `db.search(q, limit=0)` is called, then it returns `[]`.\n- AC-4 (REQ-2): Given a MemoryStorage default table containing `{'status': 'open', 'n': 1}` and `{'status': 'open', 'n': 2}` in that order, and `q = Query().status == 'open'`, when `db.search(q, limit=None)` is called, then it returns both documents in that order.\n- AC-5 (REQ-3): Given a MemoryStorage named table `x` containing `{'status': 'open', 'n': 1}` and `{'status': 'open', 'n': 2}` in that order, and `q = Query().status == 'open'`, when `db.table('x').search(q, limit=1)` is called, then it returns `[{'status': 'open', 'n': 1}]`.\n- AC-6 (REQ-4): Given a MemoryStorage default table containing `{'status': 'open', 'n': 1}` and `{'status': 'open', 'n': 2}` in that order, `q = Query().status == 'open'`, and a prior call to `db.search(q, limit=1)`, when `db.search(q)` is called, then it returns both documents in that order.\n- AC-7 (REQ-4): Given the same two documents and query, and a prior call to `db.search(q)`, when `db.search(q, limit=1)` is called, then it returns `[{'status': 'open', 'n': 1}]`.\n\n## Open questions\n\n- Q-1 (blocking; INTENT): What should happen for a negative integer such as `limit=-1`? Options: raise `ValueError`; return `[]`; apply Python negative-slice semantics. These choices produce different observable results. Default: none.\n\n## Assumptions\n\nNone.\n\n## Out of scope\n\nSorting or selecting oldest documents by a field; the requested limit uses existing search order.\n\n## Injection findings\n\nNone."
+}

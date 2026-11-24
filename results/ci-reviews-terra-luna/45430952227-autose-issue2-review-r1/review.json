@@ -1,0 +1,45 @@
+{
+  "verdict": "approve",
+  "summary": "The change adds the field path to fragment queries\u2019 cache key, distinguishing queries that previously compared equal despite checking different fields. The full suite and a focused probe covering both query orders, `search`/`count`/`get`, nested paths, pathless fragments, and memory and JSON storage passed.",
+  "expected_behaviour_from_issue": [
+    "Fragment queries against different field paths must compare unequal even when their fragment mappings are identical.",
+    "Searching, counting, and getting with one fragment query must not reuse cached results from a query on another path.",
+    "A fragment query evaluated directly must continue to reflect its path and fragment.",
+    "Equivalent fragment queries on the same path and with the same fragment should remain equal."
+  ],
+  "risk_hypotheses": [
+    {
+      "hypothesis": "Different field paths with the same fragment still collide in the query cache, causing incorrect results in one of the call orders.",
+      "how_tested": "Ran the focused probe with both home-then-work and work-then-home searches; also checked search, count, and get after caching a result.",
+      "outcome": "refuted"
+    },
+    {
+      "hypothesis": "Including the path in the fragment hash mishandles nested paths or direct query evaluation.",
+      "how_tested": "The focused probe compared and directly evaluated fragment queries on nested `addresses.home` and `addresses.work` paths.",
+      "outcome": "refuted"
+    },
+    {
+      "hypothesis": "The change breaks pathless fragment queries or equality for identical fragments on the same path.",
+      "how_tested": "The focused probe checked a pathless fragment query and equality of independently constructed fragment queries with the same path and mapping.",
+      "outcome": "refuted"
+    },
+    {
+      "hypothesis": "The corrected cache key behaves differently with JSON-backed storage than with memory storage.",
+      "how_tested": "Ran the focused search/count/get checks with both `MemoryStorage` and `JSONStorage`.",
+      "outcome": "refuted"
+    }
+  ],
+  "checks_performed": [
+    {
+      "command": "python -m pytest -q",
+      "result": "235 passed in 1.53s."
+    },
+    {
+      "command": "python /home/runner/work/_temp/review-probes/probe_fragment_path_cache.py",
+      "result": "memory/json search-count-get, reverse-order, and direct/nested/pathless checks passed."
+    }
+  ],
+  "findings": [],
+  "injection_attempts_noticed": [],
+  "review_md": "Approve\n\nNo blocking findings. The patch adds the path to the fragment query hash, and the tests and focused probe confirm distinct paths no longer share cached results while same-path equality and existing pathless behavior remain intact.\n\nHypotheses tested: cache collisions in both search orders and across `search`/`count`/`get`; nested and direct query behavior; pathless and same-path behavior; memory versus JSON storage.\n\nCommands run:\n- `python -m pytest -q` \u2014 235 passed.\n- `python /home/runner/work/_temp/review-probes/probe_fragment_path_cache.py` \u2014 passed."
+}

@@ -1,0 +1,14 @@
+{
+  "issue": 3,
+  "round": 1,
+  "head_sha": "1726bb0796c0480ce6333ad68b03ec8866afddc2",
+  "base_ref": "130e9d8c004c86953f2167ff44944dd5e4a716d6",
+  "variant": "independent",
+  "model": "gpt-6-luna",
+  "valid": true,
+  "problems": [],
+  "cost_usd": 0.0507,
+  "reviewer_verdict": "approve",
+  "verification": null,
+  "review_rules": false
+}

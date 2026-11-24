@@ -1,0 +1,1 @@
+{"finding_id":"R1","verdict":"CONFIRMED","reason":"tinydb/table.py:465 and :649 convert every supplied ID with int before checking membership, so 'nope' raises ValueError; get() at :362 and :378 compares string forms and returns no match, while the issue explicitly requires string IDs accepted by get and missing IDs skipped."}

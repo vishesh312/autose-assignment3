@@ -1,0 +1,130 @@
+{
+  "issue": 5,
+  "title": "Make membership checks work for document IDs and queries",
+  "summary": "Add membership behavior to TinyDB and named tables so callers can check for a document ID or a matching query with the `in` operator. Unsupported operands must raise TypeError; changes to contains() and large-table performance are outside this issue.",
+  "issue_type": "feature",
+  "source_excerpts": [
+    {
+      "id": "SRC-1",
+      "quote": "checking if something is in the db is really clunky"
+    },
+    {
+      "id": "SRC-2",
+      "quote": "doc_id in table should be True if and only if a document with that (int) ID exists, i.e. exactly what table.contains(doc_id=doc_id) returns."
+    },
+    {
+      "id": "SRC-3",
+      "quote": "query in table (anything callable, e.g. Query().email == x) should be True if and only if at least one document matches, i.e. exactly table.contains(query)."
+    },
+    {
+      "id": "SRC-4",
+      "quote": "Anything else (for example a dict / a document like {'name': 'alice'} in db) should raise a TypeError instead of silently returning a result."
+    },
+    {
+      "id": "SRC-5",
+      "quote": "It has to work on both TinyDB (the default table) and on named tables from db.table('...')."
+    },
+    {
+      "id": "SRC-6",
+      "quote": "No new methods, no changes to contains() itself, and the speed of large tables is out of scope for this issue"
+    },
+    {
+      "id": "SRC-7",
+      "quote": "1 in db is True after the first insert and False again after db.remove(doc_ids=[1])."
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "For an integer document ID, membership in a TinyDB instance or named table shall return the result of that table's contains(doc_id=doc_id) check.",
+      "provenance": "CONFIRMED",
+      "sources": ["SRC-2", "SRC-5", "SRC-7"]
+    },
+    {
+      "id": "REQ-2",
+      "text": "For a callable query, membership in a TinyDB instance or named table shall return the result of that table's contains(query) check.",
+      "provenance": "CONFIRMED",
+      "sources": ["SRC-3", "SRC-5"]
+    },
+    {
+      "id": "REQ-3",
+      "text": "For an operand that is neither an integer document ID nor callable, membership in a TinyDB instance or named table shall raise TypeError.",
+      "provenance": "CONFIRMED",
+      "sources": ["SRC-4", "SRC-5"]
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "requirement": "REQ-1",
+      "given": "A new TinyDB using MemoryStorage whose default table has just inserted {'name': 'alice'} as document ID 1.",
+      "when": "Evaluate 1 in db.",
+      "then": "The membership check reports that document ID 1 exists.",
+      "observable": "The expression returns True."
+    },
+    {
+      "id": "AC-2",
+      "requirement": "REQ-1",
+      "given": "A new TinyDB using MemoryStorage whose default table inserted {'name': 'alice'} as document ID 1 and then called db.remove(doc_ids=[1]).",
+      "when": "Evaluate 1 in db.",
+      "then": "The membership check reports that document ID 1 no longer exists.",
+      "observable": "The expression returns False."
+    },
+    {
+      "id": "AC-3",
+      "requirement": "REQ-1",
+      "given": "A new TinyDB using MemoryStorage with a named table db.table('people') that has inserted {'name': 'alice'} as document ID 1.",
+      "when": "Evaluate 1 in db.table('people').",
+      "then": "The membership check reports that document ID 1 exists in the named table.",
+      "observable": "The expression returns True."
+    },
+    {
+      "id": "AC-4",
+      "requirement": "REQ-2",
+      "given": "A new TinyDB using MemoryStorage whose default table contains {'email': 'alice@example.com'}.",
+      "when": "Evaluate (Query().email == 'alice@example.com') in db.",
+      "then": "The membership check reports a matching document.",
+      "observable": "The expression returns True."
+    },
+    {
+      "id": "AC-5",
+      "requirement": "REQ-2",
+      "given": "A new TinyDB using MemoryStorage with a named table db.table('people') containing {'email': 'alice@example.com'}.",
+      "when": "Evaluate (Query().email == 'bob@example.com') in db.table('people').",
+      "then": "The membership check reports that no document matches.",
+      "observable": "The expression returns False."
+    },
+    {
+      "id": "AC-6",
+      "requirement": "REQ-2",
+      "given": "A new TinyDB using MemoryStorage with a named table db.table('people') containing {'name': 'alice'}.",
+      "when": "Evaluate (lambda doc: doc['name'] == 'alice') in db.table('people').",
+      "then": "The membership check evaluates the callable against the table's documents and reports a match.",
+      "observable": "The expression returns True."
+    },
+    {
+      "id": "AC-7",
+      "requirement": "REQ-3",
+      "given": "A new TinyDB using MemoryStorage whose default table contains {'name': 'alice'}.",
+      "when": "Evaluate {'name': 'alice'} in db.",
+      "then": "The membership check rejects the dictionary operand.",
+      "observable": "The expression raises TypeError."
+    },
+    {
+      "id": "AC-8",
+      "requirement": "REQ-3",
+      "given": "A new TinyDB using MemoryStorage with a named table db.table('people') containing {'name': 'alice'}.",
+      "when": "Evaluate {'name': 'alice'} in db.table('people').",
+      "then": "The membership check rejects the dictionary operand.",
+      "observable": "The expression raises TypeError."
+    }
+  ],
+  "open_questions": [],
+  "out_of_scope": [
+    "Adding new public methods or changing contains() itself.",
+    "Improving large-table performance or adding indexes.",
+    "Membership checks based on exact document equality."
+  ],
+  "injection_findings": [],
+  "spec_md": "# Issue 5: Membership checks\n\n**Status: READY** — 3 of 3 requirements are ready; no blocking questions.\n\n## Summary\n\nMake `in` check document IDs and callable queries on TinyDB's default table and on named tables. Reject other operands with `TypeError`.\n\n## Sources\n\n- SRC-1: “checking if something is in the db is really clunky”\n- SRC-2: “doc_id in table should be True if and only if a document with that (int) ID exists, i.e. exactly what table.contains(doc_id=doc_id) returns.”\n- SRC-3: “query in table (anything callable, e.g. Query().email == x) should be True if and only if at least one document matches, i.e. exactly table.contains(query).”\n- SRC-4: “Anything else (for example a dict / a document like {'name': 'alice'} in db) should raise a TypeError instead of silently returning a result.”\n- SRC-5: “It has to work on both TinyDB (the default table) and on named tables from db.table('...').”\n- SRC-6: “No new methods, no changes to contains() itself, and the speed of large tables is out of scope for this issue”\n- SRC-7: “1 in db is True after the first insert and False again after db.remove(doc_ids=[1]).”\n\n## Requirements\n\n- **REQ-1 — CONFIRMED** (SRC-2, SRC-5, SRC-7): For an integer document ID, membership in a TinyDB instance or named table shall return the result of that table's `contains(doc_id=doc_id)` check.\n- **REQ-2 — CONFIRMED** (SRC-3, SRC-5): For a callable query, membership in a TinyDB instance or named table shall return the result of that table's `contains(query)` check.\n- **REQ-3 — CONFIRMED** (SRC-4, SRC-5): For an operand that is neither an integer document ID nor callable, membership in a TinyDB instance or named table shall raise `TypeError`.\n\n## Acceptance criteria\n\n- **AC-1 (REQ-1):** Given a new MemoryStorage database whose default table inserted `{'name': 'alice'}` as ID 1, when evaluating `1 in db`, then the result is `True`.\n- **AC-2 (REQ-1):** Given a new MemoryStorage database whose default table inserted `{'name': 'alice'}` as ID 1 and then called `db.remove(doc_ids=[1])`, when evaluating `1 in db`, then the result is `False`.\n- **AC-3 (REQ-1):** Given a new MemoryStorage database whose named `people` table inserted `{'name': 'alice'}` as ID 1, when evaluating `1 in db.table('people')`, then the result is `True`.\n- **AC-4 (REQ-2):** Given a new MemoryStorage database whose default table contains `{'email': 'alice@example.com'}`, when evaluating `(Query().email == 'alice@example.com') in db`, then the result is `True`.\n- **AC-5 (REQ-2):** Given a new MemoryStorage database whose named `people` table contains `{'email': 'alice@example.com'}`, when evaluating `(Query().email == 'bob@example.com') in db.table('people')`, then the result is `False`.\n- **AC-6 (REQ-2):** Given a new MemoryStorage database whose named `people` table contains `{'name': 'alice'}`, when evaluating `(lambda doc: doc['name'] == 'alice') in db.table('people')`, then the result is `True`.\n- **AC-7 (REQ-3):** Given a new MemoryStorage database whose default table contains `{'name': 'alice'}`, when evaluating `{'name': 'alice'} in db`, then `TypeError` is raised.\n- **AC-8 (REQ-3):** Given a new MemoryStorage database whose named `people` table contains `{'name': 'alice'}`, when evaluating `{'name': 'alice'} in db.table('people')`, then `TypeError` is raised.\n\n## Open questions and assumptions\n\nNone.\n\n## Out of scope\n\nNew public methods, changes to `contains()`, large-table performance improvements, indexes, and exact-document membership semantics.\n\n## Injection findings\n\nNone."
+}

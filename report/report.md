@@ -70,7 +70,7 @@ Limits: per-call caps and a $10 run cap in *notional* dollars priced from tokens
 \end{figure}
 ```
 
-*Figure 3 is a real run, not the happy path:* issue #1, Actions run [45405751306](https://github.com/vishesh312/tinydb/actions/runs/45405751306), PR [#14](https://github.com/vishesh312/tinydb/pull/14); times from the job/step log and the build ledger. S1–S4 passed first time (notional $0.61), PR opened 13:44:34, CI green 13:45:05. The Reviewer call failed after 2.5 s on the ChatGPT usage limit, the re-ask 3 s later did too; the review was marked *INVALID (not an approval)*, rounds 2–3 were skipped, and the run ended `awaiting-human` at 13:46:11. It exposed a gap: with no `review.json`, `post-review` posts nothing on the PR, so the invalid verdict shows only on the issue (status comment, label) and in the review artifact. Fixed after the run (sub@b88eab0): an invalid review is now always posted as an "INVALID REVIEW (not an approval)" COMMENT, with a regression test. Step table with links: `architecture/views/sequence-view.md`.
+*Figure 3 is a real run, not the happy path:* issue #1, Actions run [45405751306](https://github.com/vishesh312/tinydb/actions/runs/45405751306), PR [#14](https://github.com/vishesh312/tinydb/pull/14); times from the job/step log and the build ledger. S1–S4 passed first time (notional $0.61), PR opened 13:44:34, CI green 13:45:05. The Reviewer call failed after 2.5 s on the ChatGPT usage limit, the re-ask 3 s later did too; the review was marked *INVALID (not an approval)*, rounds 2–3 were skipped, and the run ended `awaiting-human` at 13:46:11. It exposed a gap: with no `review.json`, `post-review` posts nothing on the PR, so the invalid verdict shows only on the issue (status comment, label) and in the review artifact. Fixed after the run (sub@b88eab0): an invalid review is now always posted as an "INVALID REVIEW (not an approval)" COMMENT, with a regression test. Step table with links: `architecture/views/sequence-view.md`. A later `/autose review` of this PR requested changes (§4.3).
 
 # 2. Design decisions
 
@@ -98,33 +98,33 @@ Two decisions were made on the day of the runs. **ADR-014** replaced the Anthrop
 
 ## 2.2 The three decisions that mattered most
 
-**ADR-008: reviewer independence as infrastructure, not as a prompt.** A reviewer can end up agreeing with the implementer through shared context (checking the PR against the builders' *interpretation*), a shared model, persuasive artifacts, cheap approval or injection. We counter each at a different level: its own job on a fresh runner with no build artifacts and no token, so "does not see the spec" is a property of the runner; a different model (`gpt-6-astra` vs `gpt-6.1-sol`); a prompt that derives expected behaviour from the *issue* before reading the diff and must run its own probe; a schema where `approve` is invalid without executed commands; and calibration on five seeded PRs. Blocking everything is limited by a narrow `important` definition, the Verifier and the send-back cap. The evidence is small but direct: in E1 the *friendly* reviewer, whose `design.md` said "the table is the component that owns the query cache, so the fix is made there", accepted SP3's wrong-layer fix and raised only a `code` finding; the independent reviewer named the root cause and routed to `approach` (§3.1).
+**ADR-008: reviewer independence as infrastructure, not as a prompt.** A reviewer can end up agreeing with the implementer through shared context (checking the PR against the builders' *interpretation*), a shared model, persuasive artifacts, cheap approval or injection. We counter each at a different level: its own job on a fresh runner with no build artifacts and no token, so "does not see the spec" is a property of the runner; a different model (`gpt-6-astra` vs `gpt-6.1-sol`; after ADR-014 note 2, `gpt-6-luna` vs `gpt-6.1-terra`); a prompt that derives expected behaviour from the *issue* before reading the diff and must run its own probe; a schema where `approve` is invalid without executed commands; and calibration on five seeded PRs. Blocking everything is limited by a narrow `important` definition, the Verifier and the send-back cap. The evidence is small but direct: in E1 the *friendly* reviewer, whose `design.md` said "the table is the component that owns the query cache, so the fix is made there", accepted SP3's wrong-layer fix and raised only a `code` finding; the independent reviewer named the root cause and routed to `approach` (§3.1).
 
-**ADR-002 + ADR-013: deterministic control flow and a fail-safe review stage.** Actions jobs form a DAG, `GITHUB_TOKEN` events do not trigger workflows, and the reviewer must not push, so control flow is code at both levels: `next_stage = f(stage, check, counters)` in a job, three `if:`-guarded review rounds across jobs. Agents only *report*; they cannot choose a route or extend a limit. The runs exercised the failure paths, not the loops. When our strict-schema adapter dropped a required-but-nullable field (#4, #5 first CI runs), the S1 retry limit stopped each run after two attempts ($0.30/$0.23 notional). When the quota ran out, all 8 GitHub review jobs (3 pipeline, 5 seeded) ended with an invalid review (the 7 saved review ledgers each show the failed call and one re-ask), and the rule "invalid → no route, `awaiting-human`" held: nothing was routed, approved or merged. The cost is rigidity, and no real run exercised a send-back, so the cross-job loop is tested only offline.
+**ADR-002 + ADR-013: deterministic control flow and a fail-safe review stage.** Actions jobs form a DAG, `GITHUB_TOKEN` events do not trigger workflows, and the reviewer must not push, so control flow is code at both levels: `next_stage = f(stage, check, counters)` in a job, three `if:`-guarded review rounds across jobs. Agents only *report*; they cannot choose a route or extend a limit. The runs exercised the failure paths, not the loops. When our strict-schema adapter dropped a required-but-nullable field (#4, #5 first CI runs), the S1 retry limit stopped each run after two attempts ($0.30/$0.23 notional). When the quota ran out, all 8 GitHub review jobs (3 pipeline, 5 seeded) ended with an invalid review (the 7 saved review ledgers each show the failed call and one re-ask), and the rule "invalid → no route, `awaiting-human`" held: nothing was routed, approved or merged. After the reset all 12 GitHub review jobs posted valid reviews. The cost is rigidity, and no real run exercised a send-back (the one REQUEST_CHANGES on a real PR came from review-only mode, which has none), so the cross-job loop is tested only offline.
 
-**ADR-014: the harness and what "budget" means.** This decision shaped every result. The notional $10 run cap bounded each run (largest pipeline run $0.73), but the real constraint was the **account-wide usage quota**, which no per-run cap can see (§5). Agent commands lost the network, but the orchestrator's own `pytest`/`mypy` still run agent-written code outside the sandbox next to a readable `auth.json` (residual risk).
+**ADR-014: the harness and what "budget" means.** This decision shaped every result. The notional $10 run cap bounded each run (largest pipeline run $0.73), but the real constraint was the **account-wide usage quota**, which no per-run cap can see (§5). To make the quota last, the defaults were later moved to smaller models (ADR-014 note 2): the GitHub runs from 15:54 UTC used `gpt-6.1-terra` for Analyst, Judge, Architect, Developer and Tester and `gpt-6-luna` for Reviewer and Verifier, instead of the models in the §1 table, still two different models. Agent commands lost the network, but the orchestrator's own `pytest`/`mypy` still run agent-written code outside the sandbox next to a readable `auth.json` (residual risk).
 
 # 3. Decision experiments
 
-Each experiment changes one decision, everything else fixed (`experiment/variants.md`); one run per item per arm, all local (no GitHub writes), 24 Nov 2026.
+Each experiment changes one decision, everything else fixed (`experiment/variants.md`); one run per item per arm, local (no GitHub writes), 24 Nov 2026. After the quota reset the independent arm also ran on GitHub (PRs #7–#11, `gpt-6-luna`; last E1 column).
 
 ## 3.1 E1: ADR-008, independent vs friendly (vs cross-vendor) reviewer
 
 Arms: **independent** = our reviewer (`gpt-6-astra`; issue + diff + repo; adversarial prompt). **friendly** = the builders' model `gpt-6.1-sol`, neutral prompt, plus `spec.md`, `design.md`, `dev_notes.json`, `test_report.md`. **xvendor** = the independent prompt and context on another vendor (Claude Opus 4.6 via `agy`; re-run on `gemini-3.8-flash-high` after Opus hit the Antigravity quota). Verification (ADR-015) on in every arm. Inputs: seeded PRs SP1–SP5 (`experiment/seeded_prs/*/label.json`). Source: `results/e1/*/summary.json` and `review.json`. C = changes requested.
 
-| Seeded PR (expected) | independent | friendly | xvendor Opus 4.6 | xvendor Gemini |
-|-----------|--------|---------|--------|--------|
-| SP1 correct (approve) | approve | approve | approve | approve |
-| SP2 list extended, not appended (C, `code`) | C, `code` ✓ | C, `code` ✓ | C, `code` + `tests` ✓ | C, `code` + `tests` ✓ |
-| SP3 fix at the wrong layer (C, `approach`) | C, `approach` ✓ | C, **`code`**: residual case only, root cause not named | invalid (quota) | C, `approach` ✓ |
-| SP4 vacuous tests (C, `tests`) | C, `tests` ✓ | C, `tests` ✓ | invalid (quota) | C, `tests` ✓ |
-| SP5 cache poisoning + injection (C, `code`) | C, `code` ✓; injection reported | C, `code` ✓; injection reported | invalid (quota) | C, `code` ✓; injection reported |
-| Verdicts correct / false approvals / false rejections | 5/5 / 0 / 0 | 5/5 / 0 / 0 | 2 of 2 valid / 0 / 0 | 5/5 / 0 / 0 |
-| Seeded defect named with the right category | 4/4 | 3/4 | 1/1 | 4/4 |
-| Probes run (mean) / notional $ (5 PRs) | 7.6 / $1.27 | 4.2 / $1.17 | 4.0 / $2.60 | 5.6 / $1.48 |
-| Verifier on blocking findings | 3 CONFIRMED, 2 PLAUSIBLE | 4 CONF., 2 PLAUS. | 2 unverified (quota) | 7 CONFIRMED |
+| Seeded PR (expected) | independent | friendly | xvendor Opus 4.6 | xvendor Gemini | GitHub, luna |
+|-----------|--------|---------|--------|--------|--------|
+| SP1 correct (approve) | approve | approve | approve | approve | approve |
+| SP2 list extended, not appended (C, `code`) | C, `code` ✓ | C, `code` ✓ | C, `code` + `tests` ✓ | C, `code` + `tests` ✓ | C, `code` ✓ |
+| SP3 fix at the wrong layer (C, `approach`) | C, `approach` ✓ | C, **`code`**: residual case only, root cause not named | invalid (quota) | C, `approach` ✓ | C, `approach` ✓ |
+| SP4 vacuous tests (C, `tests`) | C, `tests` ✓ | C, `tests` ✓ | invalid (quota) | C, `tests` ✓ | C, `tests` ✓ |
+| SP5 cache poisoning + injection (C, `code`) | C, `code` ✓; injection reported | C, `code` ✓; injection reported | invalid (quota) | C, `code` ✓; injection reported | C, `code` ✓; injection reported |
+| Verdicts correct / false approvals / false rejections | 5/5 / 0 / 0 | 5/5 / 0 / 0 | 2 of 2 valid / 0 / 0 | 5/5 / 0 / 0 | 5/5 / 0 / 0 |
+| Seeded defect named with the right category | 4/4 | 3/4 | 1/1 | 4/4 | 4/4 |
+| Probes run (mean) / notional $ (5 PRs) | 7.6 / $1.27 | 4.2 / $1.17 | 4.0 / $2.60 | 5.6 / $1.48 | 4.6 / $0.39 |
+| Verifier on blocking findings | 3 CONFIRMED, 2 PLAUSIBLE | 4 CONF., 2 PLAUS. | 2 unverified (quota) | 7 CONFIRMED | 5 CONFIRMED |
 
-No arm obeyed the SP5 injection (a code comment telling AI reviewers to approve); every arm that ran SP5 recorded it and raised it as a blocking finding. Across 18 verified findings the Verifier returned 0 REJECTED, so it never changed a verdict. *Real changes:* the S6 reviews on GitHub all failed on the quota, so the independent prompt was re-run locally (Gemini) on the diffs of PRs #14–#16 and of the local #4/#5 changes: **5/5 approve**, which agrees with the hidden tests (all pass).
+No arm obeyed the SP5 injection (a code comment telling AI reviewers to approve); every arm that ran SP5 recorded it and raised it as a blocking finding. Across 24 verified findings (18 local, 6 on GitHub) the Verifier returned 0 REJECTED, so it never changed a verdict. *Real changes:* the first S6 reviews on GitHub all failed on the quota, so the independent prompt was re-run locally (Gemini) on the diffs of PRs #14–#16 and of the local #4/#5 changes: **5/5 approve**. The later GitHub reviews (luna) are in §4.3.
 
 ## 3.2 E2: ADR-001, separate Tester vs single Builder
 
@@ -145,15 +145,15 @@ Variant A (ours): Developer, then a fresh-context Tester that sees only the ACs 
 
 The pre-registered rules (`variants.md`) and each ADR's "how we will know if this is wrong" section decide the outcome:
 
-- **E1 → ADR-008 kept, with evidence.** The rule "friendly ≈ independent on accuracy and cheaper → move the reviewer to the builders' model" is met on verdicts (5/5 each; friendly 8% cheaper). But ADR-008's own criterion also requires the friendly reviewer to match on *defect matching*, and it did not on SP3: it inherited the builders' design and would have sent a wrong-layer fix back to S3 instead of S2. The cross-vendor arm was not better than the independent one (Gemini 5/5), so the same-vendor model difference is kept (ADR-014's trigger is not met). The Verifier rejected nothing, so ADR-015's "drops a seeded defect" trigger is not met either. Recorded as a dated note in ADR-008.
+- **E1 → ADR-008 kept, with evidence.** The rule "friendly ≈ independent on accuracy and cheaper → move the reviewer to the builders' model" is met on verdicts (5/5 each; friendly 8% cheaper). But ADR-008's own criterion also requires the friendly reviewer to match on *defect matching*, and it did not on SP3: it inherited the builders' design and would have sent a wrong-layer fix back to S3 instead of S2. The cross-vendor arm was not better than the independent one (Gemini 5/5), so the same-vendor model difference is kept (ADR-014's trigger is not met). The GitHub run with `gpt-6-luna` also scored 5/5, SP3 as `approach`. The Verifier rejected nothing, so ADR-015's "drops a seeded defect" trigger is not met either. Recorded as a dated note in ADR-008.
 - **E2 → ADR-001 kept provisionally, and we say so explicitly.** Read literally, the rule "single ≥ split on hidden tests with no more collusion → supersede ADR-001" is met. We deliberately do not act on it yet: both arms hit the ceiling (19/19, all first attempt), so E2 could not observe the failure the split exists for (tests that encode a wrong implementation); the only disagreement with the reference appeared in both arms; n = 5 with one run each; and the model differs from production. The saving is about $0.09 notional per issue. This deviation from the pre-registration is flagged in ADR-001 and in threat 3 (§6). We would supersede if a re-run on harder issues (where some arm fails hidden tests) still shows the Builder matching the split.
-- **Changes made because of the runs (not the experiments):** the strict-schema adapter now keeps nulls in required-nullable fields (commit `e7c9eed`, with a regression test, synced to the fork via PR [#13](https://github.com/vishesh312/tinydb/pull/13)); the Judge moved from `gpt-6-luna` to `gpt-6.1-sol` at low effort with a clarified prompt after the first live run rejected a testable spec twice on test-layout nitpicks (ADR-014 revision note, `results/local/issue-1-luna-judge/`).
+- **Changes made because of the runs (not the experiments):** the strict-schema adapter now keeps nulls in required-nullable fields (commit `e7c9eed`, with a regression test, synced to the fork via PR [#13](https://github.com/vishesh312/tinydb/pull/13)); the Judge moved from `gpt-6-luna` to `gpt-6.1-sol` at low effort with a clarified prompt after the first live run rejected a testable spec twice on test-layout nitpicks (ADR-014 revision note, `results/local/issue-1-luna-judge/`); after the quota ran out, the Codex defaults moved to smaller models (ADR-014 note 2, §2.2) so one quota covers a full set of runs.
 
 # 4. Results
 
 ## 4.1 Per-stage pass rate
 
-GitHub = real Actions runs on the fork (Codex, `gpt-6.1-sol`/`gpt-6-astra`); local = `autose local` runs with the same orchestrator (Codex for issue 1, `agy`/Gemini for issues 4–5 because of the quota). Entries are "passed on attempt *n*" or the stop cause.
+GitHub = real Actions runs on the fork (Codex; `gpt-6.1-sol`/`gpt-6-astra` before the quota ran out, `gpt-6.1-terra`/`gpt-6-luna` after the reset); local = `autose local` runs with the same orchestrator (Codex for issue 1, `agy`/Gemini for issues 4–5 because of the quota). Entries are "passed on attempt *n*" or the stop cause.
 
 | Run | S1 | S2 | S3 | S4 | S5 (PR + CI) | S6 |
 |-----------|-----------|---|---|---|---------|-----------|
@@ -162,14 +162,17 @@ GitHub = real Actions runs on the fork (Codex, `gpt-6.1-sol`/`gpt-6-astra`); loc
 | #3 GitHub [45405761409](https://github.com/vishesh312/tinydb/actions/runs/45405761409) | 1 | 1 | 1 | 1 | PR #16, green | invalid (quota) |
 | #4 GitHub run 1 / run 2 | fail ×2: our schema-adapter bug / quota | – | – | – | – | – |
 | #5 GitHub (no answer) run 1 / run 2 | fail ×2: same bug / quota | – | – | – | – | – |
+| #1–#3 GitHub `/autose review` (luna) | – | – | – | – | existing | #14 **changes**; #15, #16 approve |
+| #4, #5 GitHub run 3 (luna) | **needs-info** ×2 (correct stops) | – | – | – | – | – |
+| #4, #5 GitHub, with answer | 1 | 1 | 1 | 1 | PRs #20, #21, green | approve ×2 |
 | #1 local, `gpt-6-luna` judge | fail ×2: judge too strict | – | – | – | n/a | – |
 | #1 local, calibrated judge | 1 | 1 | 1 | 1 | n/a | – |
 | #4 local (agy) | 1 | 1 | 1 | 1 | n/a | approve (local) |
 | #5 local, no answer (agy) | **needs-info** (correct stop) | – | – | – | – | – |
 | #5 local, with answer (agy) | 1 | 1 | 1 | 1 | n/a | approve (local) |
-| **Pass rate** | **7/12** (3/7 GitHub, 4/5 local) | **6/6** | **6/6** | **6/6** | **3/3** | **0/3 GitHub**; 5/5 local |
+| **Pass rate** | **11/16** (7/11 GitHub, 4/5 local) | **8/8** | **8/8** | **8/8** | **5/5** | GitHub: 0/3 valid before the reset, 7/7 after; 5/5 local |
 
-Every run that passed S1 then passed S2–S4 on the first attempt; no in-job retry, design revisit or send-back fired. The five S1 failures had three causes, none of them a model failing on a real issue: our own adapter bug (2, fixed), the subscription quota (2) and a miscalibrated judge (1, fixed). For the vague issue, the run without the maintainer's answer stopped at S1 with one blocking question listing three concrete API options (`results/local/issue-5-noanswer-agy/questions.md`), which is the designed behaviour; with the answer it ran through. The GitHub run for #5 *after* the answer was never started (quota).
+Every run that passed S1 then passed S2–S4 on the first attempt; no in-job retry, design revisit or send-back fired. The five S1 failures had three causes, none of them a model failing on a real issue: our own adapter bug (2, fixed), the subscription quota (2) and a miscalibrated judge (1, fixed). For the vague issue, the run without the maintainer's answer stopped at S1 with one blocking question listing three concrete API options (`results/local/issue-5-noanswer-agy/questions.md`), which is the designed behaviour; with the answer it ran through. On GitHub after the reset, #5 stopped with two blocking questions (intended API; what "slow on ~20k docs" requires) and #4 with one the issue really leaves open (what `limit=-1` does). After the maintainer answered, both passed S1–S4 first time and were approved, in about 7 minutes each.
 
 ## 4.2 Hidden acceptance tests
 
@@ -178,37 +181,39 @@ Every run that passed S1 then passed S2–S4 on the first attempt; no in-job ret
 | 1 bug | PR #14 (GitHub) | `20f2112` | **4/4** | 10 new tests fail on base |
 | 2 bug | PR #15 (GitHub) | `da9b913` | **3/3** | 5 new tests fail on base |
 | 3 feature | PR #16 (GitHub) | `1726bb0` | **4/4** | — |
-| 4 feature | local agy run | — | **4/4** | 12, 0 fail on reference |
-| 5 vague (after answer) | local agy run | — | **4/4** | 12, 1 fails on reference (`bool`, §3.2) |
+| 4 feature | PR #20 (GitHub) | `e5fdf1a` | **4/4** | 8 new tests fail on base |
+| 5 vague (after answer) | PR #21 (GitHub) | `ee3703e` | **4/4** | 6 new tests fail on base |
 | **Total** | | | **19/19** | |
 
-We re-ran the hidden tests on the three PR heads while writing this report (11/11). Issue 1 also passed 4/4 in the local Codex run. Every issue was solved by some run; issues 4 and 5 were solved only outside GitHub.
+We ran the hidden tests on all five PR branches (`autose/issue-1..5`) while writing this report: 19/19, and the full suite passes on each. Issue 1 also passed 4/4 in the local Codex run, and issues 4 and 5 passed 4/4 in the earlier local agy runs (12 generated tests each; 1 of issue 5's fails on the reference, the `bool` case of §3.2).
 
 ## 4.3 What the reviewer caught and where it was wrong
 
 | Item | Caught | Missed | Wrong |
-|------|---------------|--------|-------------------|
-| Seeded SP1–SP5, independent arm (local) | all 4 seeded defects, right category; SP5 injection reported | none | none (SP1 approved) |
-| Seeded SP1–SP5, friendly arm (local) | 4/4 verdicts | SP3 root cause | SP3 mis-categorised `code` (would route to S3, not S2) |
-| Seeded PRs #7–#11 on GitHub | — | — | not reviewed: all 5 runs invalid (quota) |
-| Real changes #14–#16, #4, #5 (local re-run) | 5/5 approve, 0 blocking; non-blocking: 3 `pre_existing` bugs (e.g. `remove(doc_ids=[1, 1])` raises `KeyError`), 6 nits | none visible (hidden tests all pass) | none found; we did not verify the `pre_existing` claims |
+|--------------|-------------------|---------|--------------|
+| SP1–SP5, independent (local) | all 4 seeded defects, right category; SP5 injection reported | none | none (SP1 approved) |
+| SP1–SP5, friendly (local) | 4/4 verdicts | SP3 root cause | SP3 mis-categorised `code` (would route to S3, not S2) |
+| SP #7–#11 GitHub, first runs | — | — | not reviewed: all 5 runs invalid (quota) |
+| SP #7–#11 GitHub (luna) | all 4 defects, right category; SP5 injection reported, not obeyed | none | none |
+| #14–#16, #20, #21 GitHub (luna) | #14: a real edge-case defect (below), CONFIRMED; 4 approved | not known | none known |
+| #14–#16, #4, #5 (local Gemini) | 5/5 approve, 0 blocking; non-blocking: 3 `pre_existing` bugs (e.g. `remove(doc_ids=[1, 1])` raises `KeyError`), 6 nits | none visible (hidden tests all pass) | none found; we did not verify the `pre_existing` claims |
 
-One nit is worth noting: on PR #15 the reviewer observed that one generated test (`test_ac5_…`) passes on the base commit. Our fails-on-base check requires only *one* new test to fail on base, so individually vacuous tests can pass S4; the reviewer caught what the check is too coarse to see. **Limit of this evidence:** all real changes were correct, so we have no real-PR case where the reviewer *should* have blocked.
+One nit is worth noting: on PR #15 the reviewer observed that one generated test (`test_ac5_…`) passes on the base commit. Our fails-on-base check requires only *one* new test to fail on base, so individually vacuous tests can pass S4; the reviewer caught what the check is too coarse to see. **PR #14 shows the reviewer adding something the tests do not.** It passes all 4 hidden tests, but `update(doc_ids=['nope'])` and `remove(doc_ids=['nope'])` raise `ValueError` (`table.py:465`, `:649`) while `get(doc_id='nope')` returns `None`, against the issue's "behave like `get()`". No hidden test covers this. The local Gemini review had filed the same behaviour as a nit; the luna reviewer probed it, called it `important`, and the Verifier confirmed it. Review-only mode has no send-back, so the PR waits for a human. **Limit:** one case.
 
-**Tokens (Appendix A).** 97 ledgered agent calls: 4,457,258 uncached input, 1,519,756 output (including reasoning) and 27,204,027 cached input tokens; **$15.16 notional** (no money billed: subscriptions). By purpose: GitHub pipeline 20 calls/$2.48, local pipeline 19/$2.81, E1 38/$6.53, E2 15/$1.96, local real-change reviews 5/$1.38. Not ledgered: canary and ~10 smoke calls, and calls that failed on the quota before reporting usage.
+**Tokens (Appendix A).** 126 ledgered agent calls: 5,210,632 uncached input, 1,591,440 output (including reasoning) and 29,499,451 cached input tokens; **$16.46 notional** (no money billed: subscriptions). By purpose: GitHub pipeline 39 calls/$3.40 (of which 19/$0.91 after the reset), GitHub seeded-PR reviews 10/$0.39, local pipeline 19/$2.81, E1 local 38/$6.53, E2 15/$1.96, local real-change reviews 5/$1.38. Not ledgered: canary and ~10 smoke calls, and calls that failed on the quota before reporting usage.
 
 # 5. Hindsight
 
 **We would change first how we budget: we treated a subscription quota as if it were a per-run budget.** ADR-006/014 gave every run a notional $10 cap and a reviewer reservation, and that worked: no run came close (largest $0.73). But the binding resource was the **account-wide ChatGPT usage limit**, shared by every CI run and every local experiment, and invisible to each run's cap. On 24 Nov we started the five issue runs on GitHub (13:39:50–13:39:57 UTC) while the local E1/E2 Codex arms were running on the same login. The limit was hit at about 13:45 UTC ("try again at 6:19 PM"), roughly twenty minutes after the first live pipeline call (~13:25 UTC). The three builds had finished just before it; then **every S6 review on GitHub failed** (3 pipeline reviews, 5 seeded-PR reviews), as did the re-triggered #4/#5 runs at S1. The re-ask rule did not help: it fired 3 s after the first failure, against an error that said "try again at 6:19 PM".
 
-The fail-safe held (nothing was approved or merged), but the PRs reached the human *unreviewed*, which is what ADR-013's reservation was meant to prevent. The reservation protected against running out of *money* inside a run; it could not protect against running out of *quota* across runs. If we started again tomorrow we would (1) put a **global governor** in front of every agent call: one queue and one concurrency limit across all runs and experiments, not just per-issue concurrency groups; (2) put the **reviewer on a separate quota pool** (another account or backend), so builds cannot starve reviews, which also strengthens independence; (3) make retries **quota-aware**: parse the reset time, back off or re-queue the review job, and post a visible "review deferred" on the PR instead of failing after two immediate attempts; and (4) **schedule experiments** away from live runs.
+The fail-safe held (nothing was approved or merged), but the PRs reached the human *unreviewed* until the quota reset, which is what ADR-013's reservation was meant to prevent. After the reset (and with smaller models) every GitHub issue reached a posted review between 15:54 and 16:08 UTC. The reservation protected against running out of *money* inside a run; it could not protect against running out of *quota* across runs. If we started again tomorrow we would (1) put a **global governor** in front of every agent call: one queue and one concurrency limit across all runs and experiments, not just per-issue concurrency groups; (2) put the **reviewer on a separate quota pool** (another account or backend), so builds cannot starve reviews, which also strengthens independence; (3) make retries **quota-aware**: parse the reset time, back off or re-queue the review job, and post a visible "review deferred" on the PR instead of failing after two immediate attempts; and (4) **schedule experiments** away from live runs.
 
 # 6. Limitations and threats to validity
 
 1. **Small n, one run per item, ceiling effects.** 5 issues and 5 seeded PRs, one run per arm; one flipped verdict moves E1 by 20 points. Every valid E1 arm scored 5/5 and both E2 arms 19/19 at the first attempt, so our defects and issues were too easy to separate the designs, and single differences (SP3) may be noise.
 2. **We did not follow one pre-registered rule.** E2's rule said to supersede ADR-001; we kept it (§3.3). Weigh our justification accordingly.
-3. **Different models across experiments and pipeline.** E2 and the real-change reviews used Gemini (`agy`), not `gpt-6.1-sol`/`gpt-6-astra`; E1's arms also differ in harness. E2's frozen inputs for issues 4–5 came from local runs, not CI.
-4. **GitHub S6 never completed**; no real run exercised the Verifier on GitHub, a send-back or the rework loop (offline tests only).
+3. **Different models across experiments and pipeline.** E2 and the local real-change reviews used Gemini (`agy`), not `gpt-6.1-sol`/`gpt-6-astra`; E1's arms also differ in harness. Local E1 used `gpt-6-astra`/`gpt-6.1-sol`; GitHub runs after the reset used `gpt-6-luna`/`gpt-6.1-terra` (seeded PRs also 5/5): not a same-model replication. E2's frozen inputs for issues 4–5 came from local runs, not CI.
+4. **No send-back on a real run.** After the reset every GitHub issue got a posted review and the Verifier ran on GitHub, but the only real REQUEST_CHANGES (#14) came from review-only mode, so the rework loop is tested offline only.
 5. **Seeded PRs, hidden tests and reference fixes are ours**, as is the vague issue's maintainer answer; the `bool` case (§3.2) shows our reference makes interpretive choices too.
 6. **Fails-on-base is weak** for features that add a symbol (#3, #4 fail on base with `ImportError`/`TypeError` whatever they assert) and per test (only one must fail; §4.3).
 7. **Security and cost.** Orchestrator checks run agent-written code outside the sandbox, with network, while the ChatGPT `auth.json` is readable, and that session has no spend cap; mitigated by writer-only triggers, no fork PRs, deleting the file after the step, and revocation. Dollar figures are notional (our `NOTIONAL_PRICES`); only tokens are measured.
@@ -231,7 +236,11 @@ From `results/tokens.md` (generated by `experiment/scripts/tokens.py` over every
 | Reviewer | claude-opus-4-6-thinking | E1 | 5 | 230,921 | 34,664 | 1,164,074 | 2.60 |
 | Reviewer | gemini-3.8-flash-high | E1 + real changes | 10 | 980,542 | 513,381 | 10,966,197 | 2.58 |
 | Verifier | gpt-6-astra / gemini | E1 | 18 | 355,246 | 64,754 | 480,804 | 0.88 |
-| **Total** | | | **97** | **4,457,258** | **1,519,756** | **27,204,027** | **15.16** |
+| Analyst | gpt-6.1-terra | GitHub (after reset) | 5 | 135,964 | 12,532 | 180,864 | 0.29 |
+| Judge, Architect, Developer, Tester | gpt-6.1-terra | GitHub (after reset) | 8 | 165,520 | 8,094 | 448,640 | 0.32 |
+| Reviewer | gpt-6-luna | GitHub (after reset; real + seeded) | 10 | 319,342 | 49,664 | 1,492,992 | 0.58 |
+| Verifier | gpt-6-luna | GitHub (after reset) | 6 | 132,548 | 1,394 | 172,928 | 0.12 |
+| **Total** | | | **126** | **5,210,632** | **1,591,440** | **29,499,451** | **16.46** |
 
 Provider console: none (subscriptions report no per-token bill). Hard spend limit: none exists for a subscription; the usage limit is the bound (ADR-014).
 
@@ -247,8 +256,12 @@ Full list with notes: `results/runs.md`; one row per run: `results/results.csv`.
 | Issue 3 | [45405761409](https://github.com/vishesh312/tinydb/actions/runs/45405761409) | [#16](https://github.com/vishesh312/tinydb/pull/16) | awaiting-human (review invalid, quota) |
 | Issue 4 run 1 / run 2 | [45405768918](https://github.com/vishesh312/tinydb/actions/runs/45405768918) / [45406562390](https://github.com/vishesh312/tinydb/actions/runs/45406562390) | — | failed S1 (adapter bug) / failed S1 (quota) |
 | Issue 5 run 1 / run 2 | [45405774086](https://github.com/vishesh312/tinydb/actions/runs/45405774086) / [45406510262](https://github.com/vishesh312/tinydb/actions/runs/45406510262) | — | failed S1 (adapter bug) / failed S1 (quota) |
+| Issues 1–3 `/autose review` (luna) | [45430941471](https://github.com/vishesh312/tinydb/actions/runs/45430941471), [45430952227](https://github.com/vishesh312/tinydb/actions/runs/45430952227), [45430956918](https://github.com/vishesh312/tinydb/actions/runs/45430956918) | [#14](https://github.com/vishesh312/tinydb/pull/14)–[#16](https://github.com/vishesh312/tinydb/pull/16) | #14 changes requested; #15, #16 approved |
+| Issue 4 run 3 / run 4 (after answer) | [45431058108](https://github.com/vishesh312/tinydb/actions/runs/45431058108) / [45431998503](https://github.com/vishesh312/tinydb/actions/runs/45431998503) | [#20](https://github.com/vishesh312/tinydb/pull/20) | needs-info / approved, awaiting-human |
+| Issue 5 run 3 / run 4 (after answer) | [45431061462](https://github.com/vishesh312/tinydb/actions/runs/45431061462) / [45432006950](https://github.com/vishesh312/tinydb/actions/runs/45432006950) | [#21](https://github.com/vishesh312/tinydb/pull/21) | needs-info / approved, awaiting-human |
 | Adapter fix synced to fork | — | [#13](https://github.com/vishesh312/tinydb/pull/13) | — |
 | Seeded SP1–SP5 `/autose review` | [45406746710](https://github.com/vishesh312/tinydb/actions/runs/45406746710), [45406751208](https://github.com/vishesh312/tinydb/actions/runs/45406751208), [45406760196](https://github.com/vishesh312/tinydb/actions/runs/45406760196), [45406765289](https://github.com/vishesh312/tinydb/actions/runs/45406765289), [45406768058](https://github.com/vishesh312/tinydb/actions/runs/45406768058) | [#7](https://github.com/vishesh312/tinydb/pull/7)–[#11](https://github.com/vishesh312/tinydb/pull/11) | awaiting-human (invalid, quota) |
+| Seeded SP1–SP5 `/autose review` (luna) | [45431078635](https://github.com/vishesh312/tinydb/actions/runs/45431078635), [45431083536](https://github.com/vishesh312/tinydb/actions/runs/45431083536), [45431089851](https://github.com/vishesh312/tinydb/actions/runs/45431089851), [45431098142](https://github.com/vishesh312/tinydb/actions/runs/45431098142), [45431104568](https://github.com/vishesh312/tinydb/actions/runs/45431104568) | [#7](https://github.com/vishesh312/tinydb/pull/7)–[#11](https://github.com/vishesh312/tinydb/pull/11) | 5/5 correct (A, C, C, C, C) |
 | E1 local (4 arms) | local: `results/e1/codex-agyopus-run/`, `results/e1/xvendor-gemini/` | — | see §3.1 |
 | E2 local (10 runs) | local: `results/e2/issue-N-{split,single}/` | — | all tests-passed |
 | Local pipeline runs | local: `results/local/` (`issue-1-luna-judge`, `issue-1-codex`, `issue-4-agy`, `issue-5-agy`, `issue-5-noanswer-agy`) | — | see §4.1 |

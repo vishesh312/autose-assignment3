@@ -1,0 +1,1 @@
+{"ts": "2026-11-24T16:05:40Z", "run_id": "45432006950", "issue": 5, "round": 1, "stage": "S6", "attempt": 1, "actor": "reviewer", "model": "gpt-6-luna", "event": "check", "passed": true, "reason": "approve", "tokens_in": 30915, "tokens_out": 3705, "cache_read": 152192, "cache_write": 0, "cost_usd": 0.0513, "seconds": 60.633}

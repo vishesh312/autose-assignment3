@@ -1,0 +1,1 @@
+{"finding_id":"R1","verdict":"CONFIRMED","reason":"tests/test_autose_issue_5.py:17-21 and :37-40 show only contains() has positive existing-ID/query assertions, while every operator check is absent; table.py:732-743 implements direct ID/query lookup, so tests lack positive coverage for the new behavior."}

@@ -1,0 +1,18 @@
+{
+  "issue": 5,
+  "branch": "autose/issue-5",
+  "base_sha": "0f007334e61430dcb25501d3250c0b806ca4e49a",
+  "head_sha": "",
+  "pr": null,
+  "round": 0,
+  "stage": "S1",
+  "attempts": {
+    "S1": 2
+  },
+  "design_revisits": 0,
+  "send_backs": 0,
+  "cost_usd": 0.1018,
+  "status": "needs-info",
+  "stop_reason": "The issue has blocking open questions; they were posted on the issue.",
+  "contested": []
+}

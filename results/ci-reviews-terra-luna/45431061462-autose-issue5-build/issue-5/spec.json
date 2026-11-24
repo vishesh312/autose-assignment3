@@ -1,0 +1,90 @@
+{
+  "issue": 5,
+  "title": "Checking if something is in the db is really clunky",
+  "summary": "The reporter wants a more convenient way to check whether a document exists, including checks by query and the reported document-ID example. The intended API and the performance goal need clarification before the requested change can be specified completely.",
+  "issue_type": "vague",
+  "source_excerpts": [
+    {
+      "id": "SRC-1",
+      "quote": "Checking whether a record exists in TinyDB is just awkward"
+    },
+    {
+      "id": "SRC-2",
+      "quote": "if db.search(User.email == email):"
+    },
+    {
+      "id": "SRC-3",
+      "quote": ">>> 1 in db\nFalse      # there definitely is a document 1 ??"
+    },
+    {
+      "id": "SRC-4",
+      "quote": "It's also slow on my bigger file (~20k docs) when I just want a yes/no."
+    },
+    {
+      "id": "SRC-5",
+      "quote": "Can existence checks be made nicer / more pythonic? Not sure what the best API is"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "TinyDB shall allow a caller to obtain a boolean indicating whether a document matches a query.",
+      "provenance": "STATED",
+      "sources": [
+        "SRC-2",
+        "SRC-4"
+      ]
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "requirement": "REQ-1",
+      "given": "A TinyDB using MemoryStorage whose default table contains {'email': 'a@example.com'} and {'email': 'b@example.com'}.",
+      "when": "The caller evaluates db.contains(where('email') == 'a@example.com').",
+      "then": "The existence check reports that a matching document exists.",
+      "observable": "The return value is the boolean True."
+    },
+    {
+      "id": "AC-2",
+      "requirement": "REQ-1",
+      "given": "A TinyDB using MemoryStorage whose default table contains {'email': 'a@example.com'}.",
+      "when": "The caller evaluates db.contains(where('email') == 'missing@example.com').",
+      "then": "The existence check reports that no matching document exists.",
+      "observable": "The return value is the boolean False."
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "Q-1",
+      "question": "What should \u201cnicer / more pythonic\u201d existence checks provide, including for the reported `1 in db` example?",
+      "why_it_matters": "INTENT: Different API choices produce different calls and different expected results for the reported example. The existing db.contains API already provides query and document-ID checks, so the desired change cannot be inferred from that capability alone.",
+      "blocking": true,
+      "options": [
+        "Make `doc_id in db` check whether that document ID exists, while retaining query checks through `db.contains`.",
+        "Use membership syntax for both document IDs and query conditions.",
+        "Keep membership behavior unchanged and improve the existing `db.contains` API or its documentation.",
+        "Introduce another explicit existence-check API; specify its name and arguments."
+      ],
+      "default_if_unanswered": null
+    },
+    {
+      "id": "Q-2",
+      "question": "What measurable behavior should address \u201cIt's also slow on my bigger file (~20k docs)\u201d?",
+      "why_it_matters": "INTENT: A time target, an early-exit requirement, and no performance requirement lead to different acceptance tests.",
+      "blocking": true,
+      "options": [
+        "Stop evaluating a query after the first matching document.",
+        "Meet a specified elapsed-time target for a specified 20,000-document workload and environment.",
+        "Do not add a performance requirement for this change."
+      ],
+      "default_if_unanswered": null
+    }
+  ],
+  "out_of_scope": [
+    "A specific implementation or new dependency.",
+    "Platform-specific behavior: the reported Python and Windows versions are environment context, not an identified platform requirement."
+  ],
+  "injection_findings": [],
+  "spec_md": "# Issue 5: Existence checks\n\n**Status: NOT READY \u2014 Q-1 and Q-2 are blocking.**\n\nThe reporter wants a more convenient way to check whether a document exists, including checks by query and the reported document-ID example. The intended API and performance goal need clarification. The existing `db.contains` API already provides query and document-ID checks; the criteria below establish the clear query behavior but do not determine the requested API change.\n\n## Source excerpts\n\n- SRC-1: \u201cChecking whether a record exists in TinyDB is just awkward\u201d\n- SRC-2: `if db.search(User.email == email):`\n- SRC-3: `>>> 1 in db` / `False      # there definitely is a document 1 ??`\n- SRC-4: \u201cIt's also slow on my bigger file (~20k docs) when I just want a yes/no.\u201d\n- SRC-5: \u201cCan existence checks be made nicer / more pythonic? Not sure what the best API is\u201d\n\n## Requirement\n\n- **REQ-1 \u2014 STATED (SRC-2, SRC-4):** TinyDB shall allow a caller to obtain a boolean indicating whether a document matches a query.\n\n## Acceptance criteria\n\n- **AC-1 (REQ-1):** Given a TinyDB using MemoryStorage whose default table contains `{'email': 'a@example.com'}` and `{'email': 'b@example.com'}`, when the caller evaluates `db.contains(where('email') == 'a@example.com')`, then the return value is the boolean `True`.\n- **AC-2 (REQ-1):** Given a TinyDB using MemoryStorage whose default table contains `{'email': 'a@example.com'}`, when the caller evaluates `db.contains(where('email') == 'missing@example.com')`, then the return value is the boolean `False`.\n\nThese criteria cover existing behavior; no criterion for a changed membership result can be specified until Q-1 is answered.\n\n## Open questions\n\n- **Q-1 \u2014 blocking:** What should \u201cnicer / more pythonic\u201d existence checks provide, including for `1 in db`? Options: make membership check document IDs and retain query checks through `db.contains`; use membership for IDs and queries; keep membership behavior and improve `db.contains` or its documentation; or introduce another explicit API, specifying its name and arguments. INTENT: the choice changes the calls and expected results. Default: none.\n- **Q-2 \u2014 blocking:** What measurable behavior should address \u201cIt's also slow on my bigger file (~20k docs)\u201d? Options: stop query evaluation after the first match; meet a specified time target for a specified workload and environment; or add no performance requirement. INTENT: these choices require different tests. Default: none.\n\n## Assumptions\n\nNone.\n\n## Out of scope\n\nA specific implementation or new dependency. The reported Python and Windows versions are environment context, not an identified platform requirement.\n\n## Injection findings\n\nNone."
+}

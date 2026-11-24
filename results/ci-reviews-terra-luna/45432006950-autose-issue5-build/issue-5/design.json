@@ -1,0 +1,63 @@
+{
+  "approach": "Add Python membership special methods to Table and TinyDB. Table dispatches integer operands and callable operands to the existing contains() method; TinyDB forwards membership to its default table, as it already does for iteration and length. This preserves the existing storage and query behavior without changing contains().",
+  "changes": [
+    {
+      "path": "tinydb/table.py",
+      "symbol": "Table.__contains__",
+      "kind": "new",
+      "new_file": false,
+      "description": "Add def __contains__(self, item: object) -> bool alongside the existing special methods. First check isinstance(item, int) and return self.contains(doc_id=item); otherwise, if callable(item), return self.contains(item). For all other operands, raise TypeError('Membership requires an integer document ID or a callable query'). Integer dispatch takes precedence for objects that are both integers and callable. Do not alter contains().",
+      "acs": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4",
+        "AC-5",
+        "AC-6",
+        "AC-7",
+        "AC-8"
+      ]
+    },
+    {
+      "path": "tinydb/database.py",
+      "symbol": "TinyDB.__contains__",
+      "kind": "new",
+      "new_file": false,
+      "description": "Add def __contains__(self, item: object) -> bool alongside the existing forwarded special methods. Return item in self.table(self.default_table_name), so default-table membership uses the configured table class and propagates its result or exception.",
+      "acs": [
+        "AC-1",
+        "AC-2",
+        "AC-4",
+        "AC-7"
+      ]
+    }
+  ],
+  "public_api": [
+    {
+      "signature": "Table.__contains__(self, item: object) -> bool",
+      "behaviour": "The expression item in table returns table.contains(doc_id=item) for an int, and table.contains(item) for any other callable. It raises TypeError for an operand that is neither an int nor callable. Exceptions raised by a callable propagate. Integer subclasses, including bool, follow the integer branch; an operand that is both an int and callable also follows that branch."
+    },
+    {
+      "signature": "TinyDB.__contains__(self, item: object) -> bool",
+      "behaviour": "The expression item in db has the same result or exception as item in db.table(db.default_table_name), including integer ID checks, callable query checks, and TypeError for unsupported operands."
+    }
+  ],
+  "test_hooks": [
+    "Import TinyDB and Query from tinydb and MemoryStorage from tinydb.storages; construct a fresh database with TinyDB(storage=MemoryStorage).",
+    "Use db.insert(...) and db.remove(doc_ids=[1]) for the default table; use db.table('people').insert(...) for a named table.",
+    "Exercise membership with the Python in operator, including a Query expression, a plain lambda, and a dictionary operand."
+  ],
+  "risks": [
+    "Python treats bool as an int; the specified integer dispatch therefore passes bool operands to contains(doc_id=...), preserving that method's existing behavior.",
+    "Membership previously fell back to iteration and document equality, so rejecting dictionary operands intentionally changes that behavior."
+  ],
+  "architecture_refs": [
+    "ARCHITECTURE.md \u00a73 Constraint 1: no imports or dependency direction changes.",
+    "ARCHITECTURE.md \u00a73 Constraint 2 and ADR-1: existing contains/get paths retain whole-database storage reads and empty-storage handling.",
+    "ARCHITECTURE.md \u00a73 Constraint 3 and ADR-3: membership adds no writes or query cache changes; existing writes retain cache invalidation.",
+    "ARCHITECTURE.md \u00a73 Constraint 4 and ADR-3: membership delegates callable evaluation to contains/get and introduces no query hashes or cache keys.",
+    "ARCHITECTURE.md \u00a73 Constraint 5: ID lookup delegates to contains/get, retaining existing ID conversion and assignment behavior.",
+    "ARCHITECTURE.md ADR-2: storage and middleware construction remain unchanged."
+  ],
+  "design_md": "## Approach\n\nAdd membership special methods to Table and TinyDB. Table dispatches integers and callables to the existing `contains()` method; TinyDB forwards the operation to its default table. Unsupported operands raise `TypeError`.\n\n## Changes\n\n| Path | Symbol | Kind | ACs |\n| --- | --- | --- | --- |\n| `tinydb/table.py` | `Table.__contains__` | new | AC-1\u2013AC-8 |\n| `tinydb/database.py` | `TinyDB.__contains__` | new | AC-1, AC-2, AC-4, AC-7 |\n\n`Table.__contains__(self, item: object) -> bool` checks `isinstance(item, int)` first and calls `self.contains(doc_id=item)`. Otherwise it calls `self.contains(item)` for a callable, or raises `TypeError('Membership requires an integer document ID or a callable query')`. `TinyDB.__contains__(self, item: object) -> bool` returns `item in self.table(self.default_table_name)`.\n\n## Public API and test hooks\n\nUse `item in table` or `item in db`. Integers use ID lookup, callables use query lookup, and other operands raise `TypeError`. Exceptions from a callable propagate. Integer subclasses, including `bool`, use ID lookup; integer dispatch also takes precedence over callable dispatch.\n\nImport `TinyDB` and `Query` from `tinydb` and `MemoryStorage` from `tinydb.storages`. Construct `TinyDB(storage=MemoryStorage)`, insert through `db` or `db.table('people')`, and exercise membership with IDs, query expressions, a lambda, and dictionaries.\n\n## Traceability\n\n- AC-1, AC-2: default-table ID membership uses both new special methods and existing `contains()`.\n- AC-3: named-table ID membership uses `Table.__contains__`.\n- AC-4: default-table query membership uses both new special methods.\n- AC-5, AC-6: named-table query and lambda membership use `Table.__contains__`.\n- AC-7: default-table dictionary membership forwards to `Table.__contains__` and raises `TypeError`.\n- AC-8: named-table dictionary membership raises `TypeError` in `Table.__contains__`.\n\n## Architecture constraints considered\n\nNo imports change (Constraint 1). Existing `contains()` and `get()` retain the whole-storage read and ID conversion paths (Constraints 2 and 5; ADR-1). No writes, query hashes, cache keys, or middleware construction are added (Constraints 3 and 4; ADR-2 and ADR-3).\n\n## Risks\n\nPython considers `bool` an `int`, so it follows the existing ID lookup behavior. Dictionary membership previously fell back to document iteration and equality; rejecting it is an intentional behavior change."
+}

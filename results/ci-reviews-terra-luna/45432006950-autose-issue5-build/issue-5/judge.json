@@ -1,0 +1,44 @@
+{
+  "verdicts": [
+    {
+      "ac": "AC-1",
+      "testable": true,
+      "reason": "Assert that membership for document ID 1 returns True."
+    },
+    {
+      "ac": "AC-2",
+      "testable": true,
+      "reason": "Assert that membership for the removed document ID returns False."
+    },
+    {
+      "ac": "AC-3",
+      "testable": true,
+      "reason": "Assert that membership for document ID 1 in the named table returns True."
+    },
+    {
+      "ac": "AC-4",
+      "testable": true,
+      "reason": "Assert that membership for the matching email query returns True."
+    },
+    {
+      "ac": "AC-5",
+      "testable": true,
+      "reason": "Assert that membership for the nonmatching email query returns False."
+    },
+    {
+      "ac": "AC-6",
+      "testable": true,
+      "reason": "Assert that membership for the specified matching callable returns True."
+    },
+    {
+      "ac": "AC-7",
+      "testable": true,
+      "reason": "Assert that the dictionary membership expression raises TypeError."
+    },
+    {
+      "ac": "AC-8",
+      "testable": true,
+      "reason": "Assert that the dictionary membership expression on the named table raises TypeError."
+    }
+  ]
+}

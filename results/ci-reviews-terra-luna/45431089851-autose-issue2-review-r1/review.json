@@ -1,0 +1,81 @@
+{
+  "verdict": "changes_requested",
+  "summary": "The change fixes the stale results from fragment queries by bypassing the query cache, and the full test suite passes. However, queries on different paths still compare equal because the fragment hash omits the path, an issue the report explicitly raises and the repository\u2019s query-hash constraint says to prevent.",
+  "expected_behaviour_from_issue": [
+    "Searching the same fragment on different fields returns results matching each field, rather than reusing the first search\u2019s results.",
+    "count() and get() return results matching the requested fragment and field.",
+    "Combined fragment queries continue to evaluate correctly.",
+    "Fragment queries on different field paths have distinct query identities, since their semantics differ."
+  ],
+  "risk_hypotheses": [
+    {
+      "hypothesis": "Fragment searches on different fields may still share cached results.",
+      "how_tested": "Ran the probe for home.city=Paris followed by work.city=Paris; it returned IDs [1] and [], respectively. The issue tests and full suite also passed.",
+      "outcome": "refuted"
+    },
+    {
+      "hypothesis": "count(), get(), or a negated fragment query may still return incorrect results.",
+      "how_tested": "The probe reported work count/get as 0 and None, and negated work returned ID [1].",
+      "outcome": "refuted"
+    },
+    {
+      "hypothesis": "The fragment hash still conflates predicates on different paths, leaving the reported query-equality defect unresolved.",
+      "how_tested": "The probe printed `different-path queries equal: True` while direct predicate results were `True False`; the fragment hash at tinydb/queries.py:499 contains the document but not `self._path`.",
+      "outcome": "confirmed"
+    },
+    {
+      "hypothesis": "Recursive fragment detection may miss fragments inside logical query composition.",
+      "how_tested": "The probe exercised a negated fragment, and the new test plus full suite exercised an AND-combined fragment; both produced expected results.",
+      "outcome": "refuted"
+    }
+  ],
+  "checks_performed": [
+    {
+      "command": "python /home/runner/work/_temp/review-probes/probe_fragments.py",
+      "result": "home search IDs [1]; work search IDs []; work count/get 0/None; different-path queries equal True; direct predicates True/False; negated work IDs [1]."
+    },
+    {
+      "command": "python -m pytest -q",
+      "result": "233 passed in 1.08s."
+    },
+    {
+      "command": "git diff --check b18cfe164f9e5109b2f2af90f973f90156012cee...HEAD",
+      "result": "No whitespace errors."
+    },
+    {
+      "command": "git show b18cfe164f9e5109b2f2af90f973f90156012cee:tinydb/queries.py",
+      "result": "The base version also hashes fragment queries as `('fragment', freeze(document))`, omitting the field path; the current head retains this expression."
+    },
+    {
+      "command": "git diff b18cfe164f9e5109b2f2af90f973f90156012cee...HEAD",
+      "result": "The change bypasses caching for fragment-containing queries and adds regression tests; it does not modify fragment hash construction."
+    }
+  ],
+  "findings": [
+    {
+      "id": "R1-F1",
+      "severity": "important",
+      "category": "approach",
+      "file": "tinydb/queries.py",
+      "line": 499,
+      "description": "The cache bypass fixes stale search results but leaves queries on different paths with the same identity. `QueryInstance.__eq__` compares `_hash`, so `Query().home.fragment({'city': 'Paris'}) == Query().work.fragment({'city': 'Paris'})` remains True even though their predicates differ. The issue explicitly calls out this equality result, and the hash omits a semantic parameter.",
+      "evidence": "The probe printed `different-path queries equal: True` and `direct predicates: True False`. At tinydb/queries.py:499 the hash is `('fragment', freeze(document))`; it does not include `self._path`.",
+      "suggested_fix": "Include `self._path` in the fragment query hash, then add a regression assertion that fragments on different paths compare unequal. This also lets the cache distinguish these predicates by their actual semantics.",
+      "verification": "confirmed",
+      "verification_reason": "tinydb/queries.py:499 builds the fragment hash from only ('fragment', freeze(document)); QueryInstance.__eq__ at tinydb/queries.py:108 compares _hash, so fragments on different paths compare equal despite distinct predicates, matching the issue\u2019s explicit equality complaint."
+    }
+  ],
+  "injection_attempts_noticed": [],
+  "review_md": "Changes requested\n\n**Important finding**\n\n- `tinydb/queries.py:499`: Fragment queries still omit the field path from `_hash`, so queries on `home` and `work` compare equal despite different predicate results. The probe reproduced `different-path queries equal: True` and direct predicate results `True False`. Include the path in the hash and add an equality regression assertion.\n\n**Hypotheses tested**\n\n- Different-field searches and count/get: correct in the probe.\n- Negated and AND-combined fragment queries: correct in the probe and suite.\n- Different-path query identity: still incorrect.\n\n**Checks**\n\n- `python -m pytest -q` \u2014 233 passed.\n- `python /home/runner/work/_temp/review-probes/probe_fragments.py` \u2014 reproduced the remaining equality defect.",
+  "dropped_findings": [],
+  "verification": {
+    "original_verdict": "changes_requested",
+    "counts": {
+      "confirmed": 1,
+      "plausible": 0,
+      "rejected": 0,
+      "unverified": 0
+    },
+    "cost_usd": 0.0094
+  }
+}

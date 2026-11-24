@@ -1,0 +1,1 @@
+{"finding_id":"R1-F1","verdict":"CONFIRMED","reason":"tinydb/queries.py:499 builds the fragment hash from only ('fragment', freeze(document)); QueryInstance.__eq__ at tinydb/queries.py:108 compares _hash, so fragments on different paths compare equal despite distinct predicates, matching the issue’s explicit equality complaint."}

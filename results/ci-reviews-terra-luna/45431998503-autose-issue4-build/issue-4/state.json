@@ -1,0 +1,21 @@
+{
+  "issue": 4,
+  "branch": "autose/issue-4",
+  "base_sha": "0f007334e61430dcb25501d3250c0b806ca4e49a",
+  "head_sha": "e5fdf1af29429b78895494be993d5af9035d11ea",
+  "pr": 20,
+  "round": 0,
+  "stage": "S5",
+  "attempts": {
+    "S1": 1,
+    "S2": 1,
+    "S3": 1,
+    "S4": 1
+  },
+  "design_revisits": 0,
+  "send_backs": 0,
+  "cost_usd": 0.2277,
+  "status": "pr-open",
+  "stop_reason": null,
+  "contested": []
+}

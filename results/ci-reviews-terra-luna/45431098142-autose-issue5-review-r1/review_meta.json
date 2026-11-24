@@ -1,0 +1,23 @@
+{
+  "issue": 5,
+  "round": 1,
+  "head_sha": "00bc4ee1b71f3a28b6b124fab743a3d1a8ae5c6a",
+  "base_ref": "b18cfe164f9e5109b2f2af90f973f90156012cee",
+  "variant": "independent",
+  "model": "gpt-6-luna",
+  "valid": true,
+  "problems": [],
+  "cost_usd": 0.0877,
+  "reviewer_verdict": "changes_requested",
+  "verification": {
+    "original_verdict": "changes_requested",
+    "counts": {
+      "confirmed": 1,
+      "plausible": 0,
+      "rejected": 0,
+      "unverified": 0
+    },
+    "cost_usd": 0.018
+  },
+  "review_rules": false
+}

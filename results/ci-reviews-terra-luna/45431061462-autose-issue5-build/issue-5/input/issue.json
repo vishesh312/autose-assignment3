@@ -1,0 +1,11 @@
+{
+  "number": 5,
+  "title": "checking if something is in the db is really clunky",
+  "body": "Not exactly a bug but it's been bugging me (pun intended). Checking whether a record exists in TinyDB is just awkward compared to everything else in the library which is super pythonic.\n\nRight now I end up writing stuff like\n\n```python\nif db.search(User.email == email):\n    ...\nif len(db.search(User.email == email)) > 0:\n    ...\n```\n\nor digging through the docs for the right method and the right keyword argument every time. And when I tried the obvious thing it just quietly says no:\n\n```python\n>>> 1 in db\nFalse      # there definitely is a document 1 ??\n```\n\nwhich cost me a while of debugging. It's also slow on my bigger file (~20k docs) when I just want a yes/no.\n\nCan existence checks be made nicer / more pythonic? Not sure what the best API is, you know the codebase better, but right now it feels like a footgun.\n\ntinydb 4.9.0, Python 3.11 on Windows\n",
+  "maintainer_comments": [
+    {
+      "author": "vishesh312",
+      "body": "/autose"
+    }
+  ]
+}

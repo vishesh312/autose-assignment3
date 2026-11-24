@@ -1,0 +1,64 @@
+{
+  "issue": 5,
+  "title": "Checking if something is in the db is really clunky",
+  "summary": "The reporter wants a more convenient way to check whether a TinyDB document exists and reports that the current approach is slow on a larger file. The desired API, membership semantics, and measurable performance target need clarification before the change can be specified as automated tests.",
+  "issue_type": "vague",
+  "source_excerpts": [
+    {
+      "id": "SRC-1",
+      "quote": "checking if something is in the db is really clunky"
+    },
+    {
+      "id": "SRC-2",
+      "quote": "if db.search(User.email == email):"
+    },
+    {
+      "id": "SRC-3",
+      "quote": "or digging through the docs for the right method and the right keyword argument every time."
+    },
+    {
+      "id": "SRC-4",
+      "quote": ">>> 1 in db\nFalse      # there definitely is a document 1 ??"
+    },
+    {
+      "id": "SRC-5",
+      "quote": "It's also slow on my bigger file (~20k docs) when I just want a yes/no."
+    },
+    {
+      "id": "SRC-6",
+      "quote": "Can existence checks be made nicer / more pythonic? Not sure what the best API is"
+    }
+  ],
+  "requirements": [],
+  "acceptance_criteria": [],
+  "open_questions": [
+    {
+      "id": "Q-1",
+      "question": "What should “nicer / more pythonic” existence checks look like, including the reported `1 in db` example and query-based checks?",
+      "why_it_matters": "INTENT: The requested API is unspecified. TinyDB already has `contains` for queries and document IDs, while different proposed APIs produce different test actions and results.",
+      "blocking": true,
+      "options": [
+        "Make `1 in db` check for document ID 1 and use `query in db` for query matches.",
+        "Make `1 in db` check for document ID 1 and keep query checks through `db.contains(query)`.",
+        "Keep membership semantics unchanged and improve the existing `db.contains(...)` interface or its documentation.",
+        "Use a different API; specify its syntax and the meanings of its arguments."
+      ],
+      "default_if_unanswered": null
+    },
+    {
+      "id": "Q-2",
+      "question": "What measurable change is wanted for “slow on my bigger file (~20k docs)”?",
+      "why_it_matters": "INTENT: A performance requirement needs a defined operation and observable target; different answers lead to different acceptance tests.",
+      "blocking": true,
+      "options": [
+        "Require query existence checks to stop evaluating documents after the first match.",
+        "Set a specific latency target and specify the storage, dataset, query, and measurement conditions.",
+        "Do not include a performance requirement in this change."
+      ],
+      "default_if_unanswered": null
+    }
+  ],
+  "out_of_scope": [],
+  "injection_findings": [],
+  "spec_md": "# Issue 5: Existence checks\n\n**Status: NOT READY — Q-1 and Q-2 require maintainer answers.**\n\nThe reporter wants a more convenient existence check and reports slow checks on a larger file. The requested API and performance target are not yet specified sufficiently to write acceptance tests.\n\n## Source excerpts\n\n- SRC-1: “checking if something is in the db is really clunky”\n- SRC-2: `if db.search(User.email == email):`\n- SRC-3: “or digging through the docs for the right method and the right keyword argument every time.”\n- SRC-4: `>>> 1 in db` / `False      # there definitely is a document 1 ??`\n- SRC-5: “It's also slow on my bigger file (~20k docs) when I just want a yes/no.”\n- SRC-6: “Can existence checks be made nicer / more pythonic? Not sure what the best API is”\n\n## Requirements and acceptance criteria\n\nNone specified yet: the requested behavior depends on Q-1 and the performance expectation depends on Q-2. TinyDB already exposes `contains` for queries and document IDs, but the issue does not choose the intended change.\n\n## Open questions\n\n- **Q-1 — blocking; INTENT:** What should “nicer / more pythonic” existence checks look like, including `1 in db` and query-based checks? Options: membership for both IDs and queries; membership for IDs with `contains` for queries; retain membership semantics and improve `contains` or its documentation; or specify another API. No default.\n- **Q-2 — blocking; INTENT:** What measurable change is wanted for “slow on my bigger file (~20k docs)”? Options: stop query evaluation after the first match; specify a latency target and measurement conditions; or include no performance requirement. No default.\n\n## Assumptions\n\nNone.\n\n## Out of scope\n\nNone specified.\n\n## Injection findings\n\nNone."
+}

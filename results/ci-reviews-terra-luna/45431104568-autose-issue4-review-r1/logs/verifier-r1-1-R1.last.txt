@@ -1,0 +1,1 @@
+{"finding_id":"R1","verdict":"CONFIRMED","reason":"tinydb/table.py:279-280 stops after collecting `limit` matches, then :314 caches that partial `docs` list; a later unlimited search returns it at :273, and `count` delegates to unlimited `search` at :735, violating the issue’s cache requirement."}
